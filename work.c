@@ -48,7 +48,7 @@ int main(int argc, char* argv[])
   int naccess;
 
   if(argc<4){
-    printf("usage: work <memsize in MB> <locality: R for Random or T for Temporal> <# of memory accesses per iteration>");
+    printf("usage: work <memsize in MB> <locality: R for Random or T for Temporal> <# of memory accesses per iteration>\n");
     return -1;
   }
 

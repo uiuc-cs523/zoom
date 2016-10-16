@@ -61,6 +61,10 @@ int main(int argc, char* argv[])
   for(index=0; index<BUFD_MAX; index++)
     if(buf[index] != -1) break;
 
+
+  // Print description for each column
+  printf("Time_(jiffies) Minor_faults Major_faults CPU_utilization\n");
+
   i = 0;
   // loop over entire length of buffer and write -1 after printing out current value
   while(buf[index] != -1){
