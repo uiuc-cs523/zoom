@@ -1,0 +1,20 @@
+README instructions for running zoom
+Version 1
+---------------------------------------------------
+Running instructions for version 1
+---------------------------------------------------
+1.  compile zoom by: make all
+2.  install module by: sudo insmod zoom.ko
+3.  get the character device number by: cat /proc/devices | grep tstdvr
+4.  install a device file by:  sudo mknod node c <device #> 0
+5.  give character device proper permissions by:  sudo chmod 666 node
+6.  run a process by:  work   # Note:  check argument list for options
+7.  download data by: ./monitor ><output file>
+8.  uninstall module by:  sudo rmmod zoom
+9.  The output data will be stored in the <output file>
+-----------------------------------------------------
+Capabilities include:
+- ability to allow a process to register and unregister with the module
+- monitor process during running to capture performance parameters with memory
+- parameters are mapped to user-space memory for recording
+------------------------------------------------------
