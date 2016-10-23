@@ -63,22 +63,23 @@ int main(int argc, char* argv[])
 
 
   // Print description for each column
-  printf("Time_(jiffies) Minor_faults Major_faults CPU_utilization\n");
+  //printf("Time_(jiffies) Minor_faults Major_faults CPU_utilization\n");
+  printf("PID \t Minor_faults \t Major_faults \t RSS\n");
 
   i = 0;
   // loop over entire length of buffer and write -1 after printing out current value
   while(buf[index] != -1){
-    printf("%ld ", buf[index]);
+    printf("%ld \t\t ", buf[index]);
     buf[index++] = -1;
     if(index >= BUFD_MAX)
       index = 0;
 
-    printf("%ld ", buf[index]);
+    printf("%ld \t\t", buf[index]);
     buf[index++] = -1;
     if(index >= BUFD_MAX)
       index = 0;
 
-    printf("%ld ", buf[index]);
+    printf("%ld \t\t", buf[index]);
     buf[index++] = -1;
     if(index >= BUFD_MAX)
       index = 0;

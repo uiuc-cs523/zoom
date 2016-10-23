@@ -421,7 +421,9 @@ static int perform_register(unsigned int pid) {
   // Should only create a work structure if one does not currently exist
   // if(zoom_wq) {
     // See if the work struct currently exists or is NULL.  If NULL, allocate.
+  //printk(KERN_INFO "On registration of process %d the value of zoom work is %p\n",pid,zoom_work);
   if(zoom_work == NULL) {
+    //printk("Trying to allocate a work structure\n");
     zoom_work = (zoom_work_t*) kmalloc(sizeof(zoom_work_t),GFP_KERNEL);
     if(zoom_work) {
       printk("allocated the work structure\n");
@@ -438,10 +440,10 @@ static int perform_register(unsigned int pid) {
     }
   } // end if zoom_work is NULL
     //  } // end if zoom_wq is NULL
-  else {
-    printk(KERN_INFO "Something happened wrong with work queue allocation\n");
-    return -1;
-  }
+  //else {
+  //  printk(KERN_INFO "Something happened wrong with work queue allocation\n");
+  //  return -1;
+  //}
   
   // Add to the current list of tasks
   current_num_tasks++;
@@ -530,6 +532,8 @@ static int perform_deregister(unsigned int pid) {
       zoom_work = NULL;
     } // end zoom_work if
     printk(KERN_INFO "Freeing the wq since there are no more tasks in list\n");
+    // Set mem pressure to low since there are no registered tasks
+    mem_press.pressure_state = LOW_PRESSURE;
     return 0;
     } // end current_num_tasks if
     

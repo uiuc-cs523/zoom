@@ -22,7 +22,21 @@ Capabilities include:
 ------------------------------------------------------
 Updates made to version 2
 ------------------------------------------------------
+Requirement:  Add signal from kernel sent to processes to notify memory pressure condition
+------------------------------------------------------
 1.  Change reported values in memory map to PID, delta minor page faults, delta major page faults, rss
 2.  Add signal when rss gets above threshold value
 3.  Add a memory pressure structure that is updated every work queue event
 4.  Add signal handling to the work code so that something is printed to screen upon signal receipt
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 3
+------------------------------------------------------
+Requirement:  Need to improve the work program to allow for children to be spawned
+------------------------------------------------------
+1.  Modified work to allow children to be spawned based on an additional command line argument
+2.  Fixed small bug in zoom that didn't allow multiple processes to register
+3.  Modified print output for monitor for correct titles and tabbed out lines
+4.  Fixed a bug with signal to make sure memory pressure is reset when all processes are unregistered
+
