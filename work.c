@@ -8,12 +8,22 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <signal.h>
 
 #define N_ITERATION 20
 
 char *buffer[1024];
+void sigusr_handler(int sig);
+struct sigaction sa;
 
 int msize;
+
+// JRF:  Added for signal handling
+void sigusr_handler(int sig)
+{
+  printf("SIGUSR1 received\n");;
+}
+
 
 // This function emualtes a random memory access
 void rand_access()
@@ -56,6 +66,15 @@ int main(int argc, char* argv[])
   if(msize>1024 || msize<1){
     printf("memsize shall be between 1 and 1024\n");
     return -1;
+  }
+
+  sa.sa_handler = sigusr_handler;
+  sa.sa_flags = 0; // or SA_RESTART
+  sigemptyset(&sa.sa_mask);
+
+  if (sigaction(SIGUSR1, &sa, NULL) == -1) {
+    perror("sigaction");
+    exit(1);
   }
 
   locality = (argv[2][0]=='R')?0:1;

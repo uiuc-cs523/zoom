@@ -24,12 +24,25 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Group_7");
 MODULE_DESCRIPTION("ZOOM Project");
 
-#define DEBUG 1
+//#define DEBUG 1
 #define MAX_STR 80
 #define MAX_ENTRIES 10
 // period in milliseconds
-#define PERIOD 50
+#define PERIOD 500
 #define NPAGES 128
+// Adding this definition for memory pressure modeling
+#define RSS_THRES 1000
+#define LOW_PRESSURE 0
+#define MED_PRESSURE 1
+#define HIGH_PRESSURE 2
+#define EMERG_PRESSURE 3
+
+// JRF:  Adding this type for memory pressure modeling
+typedef struct {
+  unsigned long tot_rss;
+  unsigned long prev_tot_rss;
+  int pressure_state;
+} mem_pressure_t;
 
 typedef struct {
   struct task_struct *zoom_task;
@@ -74,6 +87,9 @@ static struct cdev *node_dev;
 dev_t dev_no,dev;
 static int Major;
 
+// JRF:  For memory pressure modeling
+static mem_pressure_t mem_press;
+
 static int zoom_show(struct seq_file *m, void *v);
 static int zoom_open(struct inode *node, struct file *fp);
 static ssize_t zoom_write(struct file *fp, const __user char *buffer, size_t length, loff_t *offset);
@@ -88,7 +104,10 @@ static int dev_release(struct inode *node, struct file *fp);
 static int dev_mmap(struct file *fp, struct vm_area_struct *v);
 static int mmap_vmem(struct file *filp, struct vm_area_struct *vma);
 struct task_struct* find_task_by_pid(unsigned int nr);
-int get_cpu_use(int pid, unsigned long *min_flt, unsigned long *maj_flt,unsigned long *utime, unsigned long *stime);
+int get_mem_stats(int pid, unsigned long *min_flt, unsigned long *maj_flt, unsigned long *rss, unsigned long *hiwater);
+// JRF:  Adding this for memory pressure
+static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss);
+static void check_mem_pressure(mem_pressure_t *mem_press, unsigned int pid);
 
 static const struct file_operations zoom_file_ops = {  
   .owner = THIS_MODULE,
@@ -177,6 +196,11 @@ int __init zoom_init(void)
 
    // add the device driver
    ret = cdev_add(node_dev,dev,1);
+
+   // JRF:  Initialize the memory pressure variable
+   mem_press.tot_rss = 0;
+   mem_press.prev_tot_rss = 0;
+   mem_press.pressure_state = LOW_PRESSURE;   
 
    printk(KERN_ALERT "ZOOM MODULE LOADED\n");
    return 0;   
@@ -524,17 +548,19 @@ static void zoom_wq_function(struct work_struct *work) {
   //int found_in_list = 0;
   struct list_head *pos;
   zoom_PCB *tmp;
-  unsigned long min_flt, maj_flt, utime, stime;
+  unsigned long min_flt, maj_flt, rss, hiwater;
   int ret;
   //static int count = 0;
   unsigned long scratch;
-  unsigned long utilization;
+  //unsigned long utilization;
   unsigned long *buffer;
   static int index = 0;
   unsigned int limit;
+  unsigned long lpid;
+  unsigned long tot_rss = 0;
 
   // JRF:  Comment this out for now
-  printk(KERN_INFO "entered work queue function\n");
+  //printk(KERN_INFO "entered work queue function\n");
 
   //return;
 
@@ -548,29 +574,36 @@ static void zoom_wq_function(struct work_struct *work) {
   list_for_each(pos, &zoom_task_list.list) {
     tmp = list_entry(pos,zoom_PCB,list);
     // Get stats for task in list
-    get_cpu_use(tmp->pid, &min_flt, &maj_flt, &utime, &stime);
+    get_mem_stats(tmp->pid, &min_flt, &maj_flt, &rss, &hiwater);
     
     // Copy time in jiffies to queue
     scratch = jiffies;
     // Compute utilization here
-    utilization = (utime + stime) * HZ;
+    //utilization = (rss + hiwater) * HZ;
 
     // TODO:  have index wrap-around the page size
     limit = (NPAGES * PAGE_SIZE / sizeof(unsigned long)) - 1;
     if(index >= limit)
        index = 0;
     // Copy cpu utilization to queue
-    buffer[index++] = scratch;
+    lpid = (unsigned long) tmp->pid;
+    buffer[index++] = lpid;
     // Copy minor fault count to queue
     buffer[index++] = min_flt;
     // Copy major fault count to queue
     buffer[index++] = maj_flt;
     // Copy cpu utilization to queue
-    buffer[index++] = utilization; 
+    buffer[index++] = rss; 
     
+    // Sum up the rss here
+    tot_rss += rss;
+
+    // JRF:  Decide signal here
+    check_mem_pressure(&mem_press, tmp->pid); 
+
     // For now just print to kernel log
 #ifdef DEBUG
-    printk(KERN_INFO "For process %d, min flt = %lu, maj flt = %lu, utime = %lu, stime = %lu\n",tmp->pid,min_flt,maj_flt,utime,stime); 
+    printk(KERN_INFO "For process %d, min flt = %lu, maj flt = %lu, rss = %lu, hiwater = %lu\n",tmp->pid,min_flt,maj_flt,rss,hiwater); 
 #endif   
   }
 
@@ -578,6 +611,10 @@ static void zoom_wq_function(struct work_struct *work) {
   //  spin_unlock(&zoom_lock);
   up(&zoom_lock);
   
+  // JRF:  Calculate memory pressure level here (TODO:  add it loop above when more than one process is registered)    
+  calc_mem_pressure(&mem_press, tot_rss);
+  //printk(KERN_INFO "The total rss value is %d\n",tot_rss);
+
   // place it back in queue
   //  if(counter < 200) {
   ret = queue_delayed_work(zoom_wq, (struct delayed_work *)work, msecs_to_jiffies(PERIOD));
@@ -646,29 +683,73 @@ struct task_struct* find_task_by_pid(unsigned int nr)
 // PROCESS CPU TIME IN JIFFIES AND MAJOR AND MINOR PAGE FAULT COUNTS
 // SINCE THE LAST INVOCATION OF THE FUNCTION FOR THE SPECIFIED PID.
 // OTHERWISE IT RETURNS -1
-int get_cpu_use(int pid, unsigned long *min_flt, unsigned long *maj_flt,
-         unsigned long *utime, unsigned long *stime)
+int get_mem_stats(int pid, unsigned long *min_flt, unsigned long *maj_flt,
+         unsigned long *rss, unsigned long *hiwater)
 {
         int ret = -1;
         struct task_struct* task;
-        rcu_read_lock();
-        task=find_task_by_pid(pid);
-        if (task!=NULL) {
-                *min_flt=task->min_flt;
-                *maj_flt=task->maj_flt;
-                *utime=task->utime;
-                *stime=task->stime;
 
-                task->maj_flt = 0;
-                task->min_flt = 0;
-                task->utime = 0;
-                task->stime = 0;
-                ret = 0;
+	// Get the read lock
+        rcu_read_lock();
+	// get the task structure
+        task=find_task_by_pid(pid);
+	// test if the task is available
+        if (task!=NULL) {
+	  *min_flt=task->min_flt;
+	  *maj_flt=task->maj_flt;
+	  // Rather than uptime, get the rss value
+	  *rss = get_mm_rss(task->mm);
+	  *hiwater = get_mm_hiwater_rss(task->mm);
+	  // Reset the number of page faults
+	  task->maj_flt = 0;
+	  task->min_flt = 0;
+	  ret = 0;
         }
+	// hand back the read lock
         rcu_read_unlock();
+
         return ret;
 }
 
+// JRF:  For memory pressure modeling.  This routine updates the memory pressure structure
+// in accordance with the rss value.
+static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss) {
+
+  mem_press->tot_rss = rss;
+
+  return;
+
+}
+
+// JRF:  For memory pressure modeling.  This routine updates the memory pressure structure
+// in accordance with the rss value.
+static void check_mem_pressure(mem_pressure_t *mem_press, unsigned int pid) {
+  
+  int ret;
+  struct siginfo si;
+  struct task_struct *task;
+  
+  if(mem_press->tot_rss > RSS_THRES && mem_press->pressure_state == LOW_PRESSURE) {
+    // Set state to medium pressure
+    mem_press->pressure_state = MED_PRESSURE;
+    // Get the task struct
+    task = find_task_by_pid(pid);
+    // send a signal to the process of medium pressure
+    si.si_signo = SIGUSR1;
+    si.si_code = SI_QUEUE;
+    si.si_errno = 0;
+    ret = send_sig_info(SIGUSR1,&si,task);
+    printk(KERN_INFO "Sent signal for process %d for rss %lu",pid,mem_press->tot_rss);
+    if(ret < 0) {
+      printk(KERN_INFO "Problem sending signal\n");
+      return;
+    }
+    if(mem_press->tot_rss < RSS_THRES && mem_press->pressure_state == MED_PRESSURE) {
+      mem_press->pressure_state = LOW_PRESSURE;
+    }      
+  }  
+  return;  
+}
 
 // Register init and exit funtions
 module_init(zoom_init);

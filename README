@@ -18,3 +18,11 @@ Capabilities include:
 - monitor process during running to capture performance parameters with memory
 - parameters are mapped to user-space memory for recording
 ------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 2
+------------------------------------------------------
+1.  Change reported values in memory map to PID, delta minor page faults, delta major page faults, rss
+2.  Add signal when rss gets above threshold value
+3.  Add a memory pressure structure that is updated every work queue event
+4.  Add signal handling to the work code so that something is printed to screen upon signal receipt
