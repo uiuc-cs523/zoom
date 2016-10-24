@@ -50,3 +50,16 @@ Requirement:  Improve the signal handling from the zoom module
 There are four states currently:  low, medium, high and emergency (These definitions are arbitrary and can be changed in the code).
 2.  The work code recognizes the pressure state using the errno variable of the siginfo variable.
 3.  The zoom code was updated to place the pressure state into the siginfo errno.
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 5
+------------------------------------------------------
+Requirement:  Program the work program to react to memory pressure
+------------------------------------------------------
+1.  Added a function within the work program to free memory at 10% increments (based on pressure state) until the memory pressure level is low.
+2.  Added a global that stores current pressure state as received from kernel.
+3.  Modified the signal handler to store the pressure state.
+------------------------------------------------------
+Results observed:
+1.  Running two instances of work, when a memory pressure state was entered, both processes freed memory (reducing rss) until a low pressure state occurred.  
