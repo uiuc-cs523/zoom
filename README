@@ -39,4 +39,14 @@ Requirement:  Need to improve the work program to allow for children to be spawn
 2.  Fixed small bug in zoom that didn't allow multiple processes to register
 3.  Modified print output for monitor for correct titles and tabbed out lines
 4.  Fixed a bug with signal to make sure memory pressure is reset when all processes are unregistered
-
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 4
+------------------------------------------------------
+Requirement:  Improve the signal handling from the zoom module
+------------------------------------------------------
+1.  Reorganized the memory pressure handling into three routines:  one for calculating pressure, one for determining state and one for sending signal.
+There are four states currently:  low, medium, high and emergency (These definitions are arbitrary and can be changed in the code).
+2.  The work code recognizes the pressure state using the errno variable of the siginfo variable.
+3.  The zoom code was updated to place the pressure state into the siginfo errno.

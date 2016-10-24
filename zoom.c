@@ -31,17 +31,20 @@ MODULE_DESCRIPTION("ZOOM Project");
 #define PERIOD 500
 #define NPAGES 128
 // Adding this definition for memory pressure modeling
-#define RSS_THRES 1000
+#define RSS_THRES_MED 1000
+#define RSS_THRES_HI  5000
+#define RSS_THRES_EMER 8000
 #define LOW_PRESSURE 0
 #define MED_PRESSURE 1
-#define HIGH_PRESSURE 2
-#define EMERG_PRESSURE 3
+#define HI_PRESSURE 2
+#define EMER_PRESSURE 3
 
 // JRF:  Adding this type for memory pressure modeling
 typedef struct {
-  unsigned long tot_rss;
-  unsigned long prev_tot_rss;
-  int pressure_state;
+  unsigned long tot_rss;  // Stores the current total value of RSS
+  unsigned long prev_tot_rss; // Stores previous iteration value of RSS
+  int pressure_state; // Stores current pressure state (see definitions above)
+  int require_notify; // Flag to show if signal needs to be sent (0 = no, 1 = yes)
 } mem_pressure_t;
 
 typedef struct {
@@ -107,7 +110,8 @@ struct task_struct* find_task_by_pid(unsigned int nr);
 int get_mem_stats(int pid, unsigned long *min_flt, unsigned long *maj_flt, unsigned long *rss, unsigned long *hiwater);
 // JRF:  Adding this for memory pressure
 static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss);
-static void check_mem_pressure(mem_pressure_t *mem_press, unsigned int pid);
+static void check_mem_pressure(mem_pressure_t *mem_press);
+static void notify_mem_pressure(mem_pressure_t *mem_press);
 
 static const struct file_operations zoom_file_ops = {  
   .owner = THIS_MODULE,
@@ -200,7 +204,8 @@ int __init zoom_init(void)
    // JRF:  Initialize the memory pressure variable
    mem_press.tot_rss = 0;
    mem_press.prev_tot_rss = 0;
-   mem_press.pressure_state = LOW_PRESSURE;   
+   mem_press.pressure_state = LOW_PRESSURE;
+   mem_press.require_notify = 0;
 
    printk(KERN_ALERT "ZOOM MODULE LOADED\n");
    return 0;   
@@ -532,8 +537,9 @@ static int perform_deregister(unsigned int pid) {
       zoom_work = NULL;
     } // end zoom_work if
     printk(KERN_INFO "Freeing the wq since there are no more tasks in list\n");
-    // Set mem pressure to low since there are no registered tasks
+    // Set mem pressure to low and no notifications since there are no registered tasks
     mem_press.pressure_state = LOW_PRESSURE;
+    mem_press.require_notify = 0;
     return 0;
     } // end current_num_tasks if
     
@@ -555,7 +561,7 @@ static void zoom_wq_function(struct work_struct *work) {
   unsigned long min_flt, maj_flt, rss, hiwater;
   int ret;
   //static int count = 0;
-  unsigned long scratch;
+  //unsigned long scratch;
   //unsigned long utilization;
   unsigned long *buffer;
   static int index = 0;
@@ -581,7 +587,7 @@ static void zoom_wq_function(struct work_struct *work) {
     get_mem_stats(tmp->pid, &min_flt, &maj_flt, &rss, &hiwater);
     
     // Copy time in jiffies to queue
-    scratch = jiffies;
+    //scratch = jiffies;
     // Compute utilization here
     //utilization = (rss + hiwater) * HZ;
 
@@ -603,7 +609,7 @@ static void zoom_wq_function(struct work_struct *work) {
     tot_rss += rss;
 
     // JRF:  Decide signal here
-    check_mem_pressure(&mem_press, tmp->pid); 
+    //check_mem_pressure(&mem_press, tmp->pid); 
 
     // For now just print to kernel log
 #ifdef DEBUG
@@ -618,6 +624,9 @@ static void zoom_wq_function(struct work_struct *work) {
   // JRF:  Calculate memory pressure level here (TODO:  add it loop above when more than one process is registered)    
   calc_mem_pressure(&mem_press, tot_rss);
   //printk(KERN_INFO "The total rss value is %d\n",tot_rss);
+  check_mem_pressure(&mem_press);
+  // Notify processes of mem pressure change if changed
+  notify_mem_pressure(&mem_press);
 
   // place it back in queue
   //  if(counter < 200) {
@@ -725,34 +734,83 @@ static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss) {
 
 }
 
-// JRF:  For memory pressure modeling.  This routine updates the memory pressure structure
-// in accordance with the rss value.
-static void check_mem_pressure(mem_pressure_t *mem_press, unsigned int pid) {
+// JRF:  For memory pressure modeling.  This routine determines the mem pressure state and
+// also determines if a notification should occur.
+// Note:  Currently this is based on rss, but can be made more general later
+//static void check_mem_pressure(mem_pressure_t *mem_press, unsigned int pid) {
+static void check_mem_pressure(mem_pressure_t *mem_press) {  
+
   
+  // Check for low pressure state change
+  if(mem_press->tot_rss < RSS_THRES_MED && mem_press->pressure_state != LOW_PRESSURE) {
+    // Set state to medium pressure
+    mem_press->pressure_state = LOW_PRESSURE;
+    mem_press->require_notify = 1;
+  }
+
+  // Check for med pressure state change
+  if(mem_press->tot_rss > RSS_THRES_MED && mem_press->tot_rss < RSS_THRES_HI && mem_press->pressure_state != MED_PRESSURE) {
+    // Set state to medium pressure
+    mem_press->pressure_state = MED_PRESSURE;
+    mem_press->require_notify = 1;
+  }
+
+  // Check for med pressure state change
+  if(mem_press->tot_rss > RSS_THRES_HI && mem_press->tot_rss < RSS_THRES_EMER && mem_press->pressure_state != HI_PRESSURE) {
+    // Set state to high pressure
+    mem_press->pressure_state = HI_PRESSURE;
+    mem_press->require_notify = 1;
+  }
+ 
+  // Check for low pressure state change
+  if(mem_press->tot_rss > RSS_THRES_EMER && mem_press->pressure_state != EMER_PRESSURE) {
+    // Set state to medium pressure
+    mem_press->pressure_state = EMER_PRESSURE;
+    mem_press->require_notify = 1;
+  }   
+  return;  
+}
+
+// JRF:  This notifies the registered processes of any changes to the mem pressure state
+static void notify_mem_pressure(mem_pressure_t *mem_press) {
   int ret;
   struct siginfo si;
   struct task_struct *task;
-  
-  if(mem_press->tot_rss > RSS_THRES && mem_press->pressure_state == LOW_PRESSURE) {
-    // Set state to medium pressure
-    mem_press->pressure_state = MED_PRESSURE;
-    // Get the task struct
-    task = find_task_by_pid(pid);
-    // send a signal to the process of medium pressure
-    si.si_signo = SIGUSR1;
-    si.si_code = SI_QUEUE;
-    si.si_errno = 0;
-    ret = send_sig_info(SIGUSR1,&si,task);
-    printk(KERN_INFO "Sent signal for process %d for rss %lu",pid,mem_press->tot_rss);
-    if(ret < 0) {
-      printk(KERN_INFO "Problem sending signal\n");
-      return;
+  struct list_head *pos;
+  zoom_PCB *tmp;
+
+  // Check for notify flag set and send all processes a signal if set
+  if(mem_press->require_notify == 1) {
+
+    // Acquire lock
+    down_trylock(&zoom_lock);
+
+    // unset notify flag
+    mem_press->require_notify = 0;
+
+    // loop over process list
+    list_for_each(pos, &zoom_task_list.list) {
+      tmp = list_entry(pos,zoom_PCB,list);
+
+      // Get the task struct
+      task = find_task_by_pid(tmp->pid);
+      
+      // send a signal to the process of pressure level
+      si.si_signo = SIGUSR1;
+      si.si_code = SI_QUEUE;
+      si.si_errno = mem_press->pressure_state;
+      ret = send_sig_info(SIGUSR1,&si,task);
+      //printk(KERN_INFO "Sent signal for process %d for rss %lu",pid,mem_press->tot_rss);
+      if(ret < 0) {
+	printk(KERN_INFO "Problem sending signal\n");
+	return;
+      }
+      
     }
-    if(mem_press->tot_rss < RSS_THRES && mem_press->pressure_state == MED_PRESSURE) {
-      mem_press->pressure_state = LOW_PRESSURE;
-    }      
-  }  
-  return;  
+    // release lock
+    up(&zoom_lock);
+  } // end notify check
+
 }
 
 // Register init and exit funtions

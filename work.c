@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <string.h>
 
 #define N_ITERATION 20
 
@@ -21,11 +22,23 @@ pid_t mypid;
 int msize;
 
 // JRF:  Added for signal handling
-void sigusr_handler(int sig)
-{
-  printf("SIGUSR1 received for pid %u\n",mypid);
-}
+//void sigusr_handler(int sig)
+//{
+//  printf("SIGUSR1 received for pid %u with value %d\n",mypid, sig);
+//}
 
+static void hdl (int sig, siginfo_t *siginfo, void *context)
+{
+  int pressure_state = siginfo->si_errno;
+  if(pressure_state == 0)
+    printf("SIGUSR1 received for pid %u with low pressure\n",mypid);
+  else if(pressure_state == 1)
+    printf("SIGUSR1 received for pid %u with medium pressure\n",mypid);
+  else if(pressure_state == 2)
+    printf("SIGUSR1 received for pid %u with high pressure\n",mypid);
+  else
+    printf("SIGUSR1 received for pid %u with emergency pressure\n",mypid); 
+}
 
 // This function emualtes a random memory access
 void rand_access()
@@ -64,6 +77,7 @@ int main(int argc, char* argv[])
   int child_num;
   int parent;
   int status;
+  struct sigaction act;
 
   if(argc<5){
     // JRF:  Adding new argument for number of children
@@ -108,13 +122,26 @@ int main(int argc, char* argv[])
     child_num++;
   }
 
-  sa.sa_handler = sigusr_handler;
-  sa.sa_flags = 0; // or SA_RESTART
-  sigemptyset(&sa.sa_mask);
+  //  sa.sa_handler = sigusr_handler;
+  //  sa.sa_flags = 0; // or SA_RESTART
+  //  sigemptyset(&sa.sa_mask);
 
-  if (sigaction(SIGUSR1, &sa, NULL) == -1) {
-    perror("sigaction");
-    exit(1);
+  //  if (sigaction(SIGUSR1, &sa, NULL) == -1) {
+  //   perror("sigaction");
+  //    exit(1);
+  //  }
+
+  memset (&act, '\0', sizeof(act));
+ 
+  /* Use the sa_sigaction field because the handles has two additional parameters */
+  act.sa_sigaction = &hdl;
+ 
+  /* The SA_SIGINFO flag tells sigaction() to use the sa_sigaction field, not sa_handler. */
+  act.sa_flags = SA_SIGINFO;
+  
+  if (sigaction(SIGUSR1, &act, NULL) < 0) {
+    perror ("sigaction");
+    return 1;
   }
 
   printf("A work process starts (configuration: %d %d %d)\n", msize, locality, naccess); 
