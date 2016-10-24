@@ -19,7 +19,9 @@ void sigusr_handler(int sig);
 struct sigaction sa;
 pid_t mypid;
 
-int msize;
+// JRF:  Added msize_orig and pressure_level to store original mem size and current level of pressure
+int msize, msize_orig;
+int pressure_level;
 
 // JRF:  Added for signal handling
 //void sigusr_handler(int sig)
@@ -27,17 +29,43 @@ int msize;
 //  printf("SIGUSR1 received for pid %u with value %d\n",mypid, sig);
 //}
 
+// JRF:  Added for signal handling
 static void hdl (int sig, siginfo_t *siginfo, void *context)
 {
   int pressure_state = siginfo->si_errno;
-  if(pressure_state == 0)
+  if(pressure_state == 0) {
     printf("SIGUSR1 received for pid %u with low pressure\n",mypid);
-  else if(pressure_state == 1)
+    pressure_level = pressure_state;
+  }
+  else if(pressure_state == 1) {
     printf("SIGUSR1 received for pid %u with medium pressure\n",mypid);
-  else if(pressure_state == 2)
+    pressure_level = pressure_state;
+  }
+  else if(pressure_state == 2)  {
     printf("SIGUSR1 received for pid %u with high pressure\n",mypid);
-  else
+    pressure_level = pressure_state;
+  }
+  else {
     printf("SIGUSR1 received for pid %u with emergency pressure\n",mypid); 
+    pressure_level = pressure_state;
+  }
+}
+
+// JRF:  Adding this function to relieve some memory usage
+void relieve_memory() {
+
+  // A first cut would be to reduce memory usage by 10%
+  
+  int memory_usage = msize * (10 - pressure_level) / 10;
+  int i;
+
+  // free memory 
+  for(i=memory_usage; i<msize; i++){
+    free(buffer[i]);
+  }
+  //resize the memory amount
+    msize = memory_usage;
+
 }
 
 // This function emualtes a random memory access
@@ -79,6 +107,9 @@ int main(int argc, char* argv[])
   int status;
   struct sigaction act;
 
+  // initialize the pressure level
+  pressure_level = 0;
+
   if(argc<5){
     // JRF:  Adding new argument for number of children
     printf("usage: work <memsize in MB> <locality: R for Random or T for Temporal> <# of memory accesses per iteration> <# children>\n");
@@ -86,6 +117,8 @@ int main(int argc, char* argv[])
   }
 
   msize = atoi(argv[1]);
+  // JRF:  Save the memory size original value
+  msize_orig = msize;
   if(msize>1024 || msize<1){
     printf("memsize shall be between 1 and 1024\n");
     return -1;
@@ -156,6 +189,7 @@ int main(int argc, char* argv[])
   // 2. Allocate memory blocks
   for(i=0; i<msize; i++){
     buffer[i] = malloc(1024*1024);
+    // if allocation fails, unwind and dealloc as you go
     if(buffer[i] == NULL){
       for(i--; i>=0; i--)
         free(buffer[i]);
@@ -167,6 +201,11 @@ int main(int argc, char* argv[])
   // 3. Access allocated memory blocks using the specified access policy
   int addr = 0;
   for (k=0;k<N_ITERATION; k++){
+    // JRF:  Add this check for memory pressure relief
+    if(pressure_level != 0) {
+      printf("Relief on its way, new msize = %d\n",msize);
+      relieve_memory();
+    }
      printf("[%d] %d iteration\n", mypid, k);
      if(!locality){
        for(j=0; j<naccess; j++){
