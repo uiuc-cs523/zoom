@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <time.h>
 
 #define N_ITERATION 20
 
@@ -18,6 +19,9 @@ char *buffer[1024];
 void sigusr_handler(int sig);
 struct sigaction sa;
 pid_t mypid;
+int initDelay[100]; // in milliseconds
+int sleepBetweenIters[100]; // in milliseconds
+
 
 // JRF:  Added msize_orig and pressure_level to store original mem size and current level of pressure
 int msize, msize_orig;
@@ -92,6 +96,26 @@ int local_access(int addr)
   }
 }
 
+// This routine reads the children.properties file and loads in the properties for the children
+int parseChildrenFile(FILE *fp, int numLines) {
+  int i;
+  for(i=0;i < numLines;i++) {
+    if(fscanf(fp,"%d %d",&initDelay[i],&sleepBetweenIters[i]) == EOF)
+      return -1;   
+  }
+  return 0;
+}
+
+void outputChildrenSettings(int numLines) {
+  int i;
+
+  printf("---------------------------------\n");
+  printf("number children: %d\n",numLines);
+  for(i=0;i < numLines;i++)
+    printf("line %d:  delay = %d, sleep = %d\n",i,initDelay[i],sleepBetweenIters[i]);
+  printf("---------------------------------\n");
+}
+
 int main(int argc, char* argv[])
 {
   char cmd[120];
@@ -106,6 +130,11 @@ int main(int argc, char* argv[])
   int parent;
   int status;
   struct sigaction act;
+  FILE *fp;
+  int numLines = 0;
+  struct timespec initialDelay;
+  struct timespec iterationDelay;
+  
 
   // initialize the pressure level
   pressure_level = 0;
@@ -137,6 +166,32 @@ int main(int argc, char* argv[])
     printf("number children needs to be greater than zero and less than 101\n");
     return -1;
   }
+
+  // Parse a children properties file if children are required
+  // first, check that children are required
+  if(nchildren > 0) {
+    // second, open the file in the cwd named children.properties
+    if((fp = fopen("children.properties","r")) == NULL) {
+      fclose(fp);
+      printf("Could not open children.properties\n");
+      return -1;
+    }
+    // Read the first line of the file
+    fscanf(fp,"%d",&numLines);
+    // Limit the number of lines to 100
+    if(numLines > 100 || numLines < 0) {
+      printf("Error:  numLines in children.properties should be greater than zero and less than 101\n");
+      return -1;
+    }
+    if(parseChildrenFile(fp, numLines)) {
+      printf("Error parsing children.properties file\n");
+      fclose(fp);
+      return -1;
+    }
+  }
+
+  // print out children.properties file here for debug
+  //outputChildrenSettings(numLines);
 
   // JRF:  Loop over num children and spawn a new child each time
   child_num = 0;
@@ -198,9 +253,22 @@ int main(int argc, char* argv[])
     }
   }
 
+  // 3. Set up child specific settings
+  // start with initial delay
+  initialDelay.tv_sec = initDelay[child_num];
+  initialDelay.tv_nsec = 0;
+  iterationDelay.tv_sec = sleepBetweenIters[child_num];
+  iterationDelay.tv_nsec = 0;  
+  printf("This is the child_num = %d and the delay = %d and iter delay = %d\n",child_num,initDelay[child_num],sleepBetweenIters[child_num]);
+  nanosleep(&initialDelay,NULL);
+
+
+
   // 3. Access allocated memory blocks using the specified access policy
   int addr = 0;
   for (k=0;k<N_ITERATION; k++){
+    // JRF:  Add this here to perform iteration by iteration delay
+    nanosleep(&iterationDelay,NULL);    
     // JRF:  Add this check for memory pressure relief
     if(pressure_level != 0) {
       printf("Relief on its way, new msize = %d\n",msize);

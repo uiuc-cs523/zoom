@@ -63,3 +63,13 @@ Requirement:  Program the work program to react to memory pressure
 ------------------------------------------------------
 Results observed:
 1.  Running two instances of work, when a memory pressure state was entered, both processes freed memory (reducing rss) until a low pressure state occurred.  
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 6
+------------------------------------------------------
+Requirement:  Program the work program to be able to customize children
+------------------------------------------------------
+1.  Added the capability for the work program to parse a file in the CWD named children.properties
+2.  Added the capability to print the input from file to screen for checking
+3.  Placed initial delays and iterative delays in code so that each process doesn't access data at same speed
