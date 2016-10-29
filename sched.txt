@@ -1,0 +1,46 @@
+Schedule for zoom and zoom results
+
+Work accomplished on zoom:
+
+- Have a working LKM that 
+	1.  Can record memory usage in anonymous-mapped memory
+	2.  Requires processes to register
+	3.  Can send signals to state the memory pressure condition (only signals on transitions)
+	4.  Has access to each tasks task_struct and mm_struct
+- Have a work program that makes memory accesses (either random or with locality) that
+	1.  Can run for arbitrary lengths of time
+	2.  Has a setable memory size
+	3.  Can respond to memory pressure events
+	4.  Can spawn customizable (delays) children. 
+- Have a monitor program to extract recorded data through a mmap.
+
+Scheduled Tasks:
+
+Nov. 1:
+
+	- Add more work program capabilities:  settable memory response (or or off).
+	- Finish work program to check that nearly arbitrary memory events (in mean and variance) can be defined
+	through the use of input arguments and file settings.
+	- Make plots of memory events showing cases of memory usage versus time demonstrating different memory cases.
+	- Set various memory pressure handling settings to demonstrate how cooperative processes handle said events.
+	- Upgrade the work program to not just allocate a large virtual memory portion and then generate page faults but to allocate and free each iteration.
+	- Post intermediate results to the Wiki page
+
+Nov 5:
+
+	- Add blocking mechanisms to the work program instead of freeing to see if that may help with the memory usage.
+	- begin working on zoom including non-registered memory (rss) usage.  Have it record it and generate a ceiling on how
+	the registered processes can allocate and access.
+	- implement the memory usage gradient in zoom and send this as a signal to the work process.
+	- experiment a bit with using various memory values as indicators of memory pressure.
+	- Post intermediate results to the Wiki page
+
+Nov 8:  
+	- Add non-cooperative memory handling to zoom
+	- Begin writing up results as seen so far.
+	
+		
+
+
+	
+ 
