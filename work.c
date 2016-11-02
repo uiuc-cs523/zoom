@@ -21,6 +21,7 @@ struct sigaction sa;
 pid_t mypid;
 int initDelay[100]; // in milliseconds
 int sleepBetweenIters[100]; // in milliseconds
+int adminRelief[100];
 
 
 // JRF:  Added msize_orig and pressure_level to store original mem size and current level of pressure
@@ -97,10 +98,12 @@ int local_access(int addr)
 }
 
 // This routine reads the children.properties file and loads in the properties for the children
+// The children.properties file has the following line properties
+// initdelay iteration_delay adminRelief
 int parseChildrenFile(FILE *fp, int numLines) {
   int i;
   for(i=0;i < numLines;i++) {
-    if(fscanf(fp,"%d %d",&initDelay[i],&sleepBetweenIters[i]) == EOF)
+    if(fscanf(fp,"%d %d %d",&initDelay[i],&sleepBetweenIters[i],&adminRelief[i]) == EOF)
       return -1;   
   }
   return 0;
@@ -112,7 +115,10 @@ void outputChildrenSettings(int numLines) {
   printf("---------------------------------\n");
   printf("number children: %d\n",numLines);
   for(i=0;i < numLines;i++)
-    printf("line %d:  delay = %d, sleep = %d\n",i,initDelay[i],sleepBetweenIters[i]);
+    if(adminRelief[i] == 1)
+      printf("line %d:  delay = %d, sleep = %d and apply relief\n",i,initDelay[i],sleepBetweenIters[i]);
+    else
+      printf("line %d:  delay = %d, sleep = %d and without relief\n",i,initDelay[i],sleepBetweenIters[i]);     
   printf("---------------------------------\n");
 }
 
@@ -134,6 +140,8 @@ int main(int argc, char* argv[])
   int numLines = 0;
   struct timespec initialDelay;
   struct timespec iterationDelay;
+  int seconds, milliseconds;
+  
   
 
   // initialize the pressure level
@@ -191,7 +199,7 @@ int main(int argc, char* argv[])
   }
 
   // print out children.properties file here for debug
-  //outputChildrenSettings(numLines);
+  outputChildrenSettings(numLines);
 
   // JRF:  Loop over num children and spawn a new child each time
   child_num = 0;
@@ -241,7 +249,24 @@ int main(int argc, char* argv[])
 
   printf("The registration string:  %s\n",cmd);
 
-  // 2. Allocate memory blocks
+
+  // 2. Set up child specific settings
+  // start with initial delay
+  milliseconds = initDelay[child_num] % 1000;
+  seconds = initDelay[child_num] / 1000;
+  initialDelay.tv_sec = seconds;
+  initialDelay.tv_nsec = milliseconds * 1000000;
+  printf("This is the child_num = %d and the init delay = %d seconds and %d milliseconds\n",child_num,seconds,milliseconds);
+  // calculate iterative delay
+  milliseconds = sleepBetweenIters[child_num] % 1000;
+  seconds = sleepBetweenIters[child_num] / 1000;
+  iterationDelay.tv_sec = seconds;
+  iterationDelay.tv_nsec = milliseconds;  
+  printf("This is the child_num = %d and the iter delay = %d seconds and %d milliseconds\n",child_num,seconds,milliseconds);
+  nanosleep(&initialDelay,NULL);
+
+
+  // 3. Allocate memory blocks
   for(i=0; i<msize; i++){
     buffer[i] = malloc(1024*1024);
     // if allocation fails, unwind and dealloc as you go
@@ -253,24 +278,17 @@ int main(int argc, char* argv[])
     }
   }
 
-  // 3. Set up child specific settings
-  // start with initial delay
-  initialDelay.tv_sec = initDelay[child_num];
-  initialDelay.tv_nsec = 0;
-  iterationDelay.tv_sec = sleepBetweenIters[child_num];
-  iterationDelay.tv_nsec = 0;  
-  printf("This is the child_num = %d and the delay = %d and iter delay = %d\n",child_num,initDelay[child_num],sleepBetweenIters[child_num]);
-  nanosleep(&initialDelay,NULL);
 
 
 
-  // 3. Access allocated memory blocks using the specified access policy
+
+  // 4. Access allocated memory blocks using the specified access policy
   int addr = 0;
   for (k=0;k<N_ITERATION; k++){
     // JRF:  Add this here to perform iteration by iteration delay
     nanosleep(&iterationDelay,NULL);    
     // JRF:  Add this check for memory pressure relief
-    if(pressure_level != 0) {
+    if(pressure_level != 0 && adminRelief[child_num]) {
       printf("Relief on its way, new msize = %d\n",msize);
       relieve_memory();
     }
@@ -282,7 +300,8 @@ int main(int argc, char* argv[])
      }
      else{
        for(j=0; j<naccess; j++){
-         int locality = rand() % 10;
+         //int locality = rand() % 10;
+	 int locality = 0;
          if(locality > -2 && locality < 2){ /* random access */
            rand_access();
          }
@@ -294,12 +313,12 @@ int main(int argc, char* argv[])
      sleep(1);
   }
   
-  // 4. Free memory blocks
+  // 5. Free memory blocks
   for(i=0; i<msize; i++){
     free(buffer[i]);
   }
 
-  // 5. Unregister itself to stop the profiling
+  // 6. Unregister itself to stop the profiling
   sprintf(cmd, "echo 'U %u'>//proc/zoom/status", mypid);
   system(cmd);
 

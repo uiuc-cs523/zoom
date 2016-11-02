@@ -73,3 +73,13 @@ Requirement:  Program the work program to be able to customize children
 1.  Added the capability for the work program to parse a file in the CWD named children.properties
 2.  Added the capability to print the input from file to screen for checking
 3.  Placed initial delays and iterative delays in code so that each process doesn't access data at same speed
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 7
+------------------------------------------------------
+Requirement:  Improve work program in various ways
+------------------------------------------------------
+1.  Added a third column to children.properties allowing process to apply relief or not
+2.  Converted the delays in children.properties from seconds to milliseconds for finer control
+3.  Plotted a result of showing the effect of memory handling versus no memory handling

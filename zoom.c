@@ -28,11 +28,11 @@ MODULE_DESCRIPTION("ZOOM Project");
 #define MAX_STR 80
 #define MAX_ENTRIES 10
 // period in milliseconds
-#define PERIOD 500
+#define PERIOD 50
 #define NPAGES 128
 // Adding this definition for memory pressure modeling
-#define RSS_THRES_MED 1000
-#define RSS_THRES_HI  5000
+#define RSS_THRES_MED 2500
+#define RSS_THRES_HI  3500
 #define RSS_THRES_EMER 8000
 #define LOW_PRESSURE 0
 #define MED_PRESSURE 1
@@ -134,6 +134,7 @@ int __init zoom_init(void)
   //static int page_size;
   unsigned long page_alloc;
   int ret;
+  int time_speed = HZ;
 
    #ifdef DEBUG
    printk(KERN_ALERT "ZOOM MODULE LOADING\n");
@@ -208,6 +209,9 @@ int __init zoom_init(void)
    mem_press.require_notify = 0;
 
    printk(KERN_ALERT "ZOOM MODULE LOADED\n");
+
+   printk(KERN_INFO "The HZ value is = %d\n",time_speed);
+
    return 0;   
 }
 
@@ -472,6 +476,8 @@ static int perform_register(unsigned int pid) {
   // Need to add this to the list
   list_add(&new_task_entry->list,&zoom_task_list.list);
   
+  
+
   return 0;
 
 }
@@ -597,13 +603,13 @@ static void zoom_wq_function(struct work_struct *work) {
        index = 0;
     // Copy cpu utilization to queue
     lpid = (unsigned long) tmp->pid;
-    buffer[index++] = lpid;
+    //buffer[index++] = lpid;
     // Copy minor fault count to queue
-    buffer[index++] = min_flt;
+    //buffer[index++] = min_flt;
     // Copy major fault count to queue
-    buffer[index++] = maj_flt;
+    //buffer[index++] = maj_flt;
     // Copy cpu utilization to queue
-    buffer[index++] = rss; 
+    //buffer[index++] = rss; 
     
     // Sum up the rss here
     tot_rss += rss;
@@ -616,6 +622,14 @@ static void zoom_wq_function(struct work_struct *work) {
     printk(KERN_INFO "For process %d, min flt = %lu, maj flt = %lu, rss = %lu, hiwater = %lu\n",tmp->pid,min_flt,maj_flt,rss,hiwater); 
 #endif   
   }
+
+    buffer[index++] = jiffies;
+    // Copy minor fault count to queue
+    buffer[index++] = 0;
+    // Copy major fault count to queue
+    buffer[index++] = 0;
+    // Copy cpu utilization to queue
+    buffer[index++] = tot_rss; 
 
   // release the lock
   //  spin_unlock(&zoom_lock);
