@@ -92,4 +92,27 @@ Requirement:  Improve memory pressure handling
 ------------------------------------------------------
 1.  Implemented restoration back to original memory levels if memory pressure is relieved.
 2.  Made recovery percent adjustable in the children.properties file.
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Summary of current capability of zoom:
+1.  Have a work program that has random access capability that can spawn up to 100 children.  There are adjustable delays (sleeps) starting and between
+iterations.  The programs can receive signals from zoom and perform memory relief.  If memory has been reduced due to memory relief, the memory will attempt
+to expand back if system goes back to low memory pressure.  
+2.  Zoom will allow any process to register itself and will monitor the total RSS of all registered processes.  If this total exceeds certain thresholds,
+a signal will be sent to all registered processes asking for memory relief.  When a different threshold is crossed, a different signal is sent.
+3.  The monitor program will access a character device and read from mapped memory and receive any stats that zoom wants to pass to it.
+IN SHORT, we can show that cooperative processes that are capable of freeing memory (i.e. pages) can give relief to memory pressure.  The shortcoming with
+this is that all processes may not be able to free pages and be expected to function properly.
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 9
+------------------------------------------------------
+Requirement:  Add gradient signaling to zoom (large increment swings in memory are flagged)
+------------------------------------------------------
+1.  Changed signaling in zoom to indicate gradient level
+2.  Changed signaling in work to receive gradient level.
+Note:  This was done a bit sloppy and needs to be cleaned up a bit.  
+Bottom line:  it works for now.
 
