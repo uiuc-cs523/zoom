@@ -34,16 +34,19 @@ MODULE_DESCRIPTION("ZOOM Project");
 #define RSS_THRES_MED 2500
 #define RSS_THRES_HI  3500
 #define RSS_THRES_EMER 8000
+#define RSS_SINGLE_DELTA_THRES 1000
+// Note:  2 4 6 values account for med, high and emerg pressure with high gradient
 #define LOW_PRESSURE 0
 #define MED_PRESSURE 1
-#define HI_PRESSURE 2
-#define EMER_PRESSURE 3
+#define HI_PRESSURE 3
+#define EMER_PRESSURE 5
 
 // JRF:  Adding this type for memory pressure modeling
 typedef struct {
   unsigned long tot_rss;  // Stores the current total value of RSS
   unsigned long prev_tot_rss; // Stores previous iteration value of RSS
   int pressure_state; // Stores current pressure state (see definitions above)
+  int gradient_state;
   int require_notify; // Flag to show if signal needs to be sent (0 = no, 1 = yes)
 } mem_pressure_t;
 
@@ -742,6 +745,7 @@ int get_mem_stats(int pid, unsigned long *min_flt, unsigned long *maj_flt,
 // in accordance with the rss value.
 static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss) {
 
+  mem_press->prev_tot_rss = mem_press->tot_rss;
   mem_press->tot_rss = rss;
 
   return;
@@ -754,7 +758,11 @@ static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss) {
 //static void check_mem_pressure(mem_pressure_t *mem_press, unsigned int pid) {
 static void check_mem_pressure(mem_pressure_t *mem_press) {  
 
-  
+  if(mem_press->tot_rss > (mem_press->prev_tot_rss + RSS_SINGLE_DELTA_THRES))
+    mem_press->gradient_state = 1;
+  else
+    mem_press->gradient_state = 0;
+
   // Check for low pressure state change
   if(mem_press->tot_rss < RSS_THRES_MED && mem_press->pressure_state != LOW_PRESSURE) {
     // Set state to medium pressure
@@ -812,7 +820,8 @@ static void notify_mem_pressure(mem_pressure_t *mem_press) {
       // send a signal to the process of pressure level
       si.si_signo = SIGUSR1;
       si.si_code = SI_QUEUE;
-      si.si_errno = mem_press->pressure_state;
+      // JRF:  including gradient value with the signal value
+      si.si_errno = mem_press->pressure_state + mem_press->gradient_state;
       ret = send_sig_info(SIGUSR1,&si,task);
       //printk(KERN_INFO "Sent signal for process %d for rss %lu",pid,mem_press->tot_rss);
       if(ret < 0) {

@@ -14,6 +14,13 @@
 #include <time.h>
 
 #define N_ITERATION 20
+#define LOW_PRESSURE 0
+#define MED_PRESSURE 1
+#define HI_PRESSURE 2
+#define EMER_PRESSURE 3
+#define LOW_GRADIENT 0
+#define HI_GRADIENT 1
+
 
 char *buffer[1024];
 void sigusr_handler(int sig);
@@ -28,6 +35,7 @@ int percentRecover[100];
 // JRF:  Added msize_orig and pressure_level to store original mem size and current level of pressure
 int msize, msize_orig;
 int pressure_level;
+int gradient_level;
 
 // JRF:  Added for signal handling
 //void sigusr_handler(int sig)
@@ -41,19 +49,38 @@ static void hdl (int sig, siginfo_t *siginfo, void *context)
   int pressure_state = siginfo->si_errno;
   if(pressure_state == 0) {
     printf("SIGUSR1 received for pid %u with low pressure\n",mypid);
-    pressure_level = pressure_state;
+    pressure_level = LOW_PRESSURE;
+    gradient_level = LOW_GRADIENT;
   }
   else if(pressure_state == 1) {
-    printf("SIGUSR1 received for pid %u with medium pressure\n",mypid);
-    pressure_level = pressure_state;
+    printf("SIGUSR1 received for pid %u with medium pressure and low gradient\n",mypid);
+    pressure_level = MED_PRESSURE;
+    gradient_level = LOW_GRADIENT;    
   }
-  else if(pressure_state == 2)  {
-    printf("SIGUSR1 received for pid %u with high pressure\n",mypid);
-    pressure_level = pressure_state;
+  else if(pressure_state == 2) {
+    printf("SIGUSR1 received for pid %u with medium pressure and high gradient\n",mypid);
+    pressure_level = MED_PRESSURE;
+    gradient_level = HI_GRADIENT; 
+  }
+  else if(pressure_state == 3)  {
+    printf("SIGUSR1 received for pid %u with high pressure and low gradient\n",mypid);
+    pressure_level = HI_PRESSURE;
+    gradient_level = LOW_GRADIENT;
+  }
+  else if(pressure_state == 4)  {
+    printf("SIGUSR1 received for pid %u with high pressure and high gradient\n",mypid);
+    pressure_level = HI_PRESSURE;
+    gradient_level = HI_GRADIENT;
+  }
+  else if(pressure_state == 5)  {
+    printf("SIGUSR1 received for pid %u with emergency pressure and low gradient\n",mypid);
+    pressure_level = EMER_PRESSURE;
+    gradient_level = LOW_GRADIENT;
   }
   else {
-    printf("SIGUSR1 received for pid %u with emergency pressure\n",mypid); 
-    pressure_level = pressure_state;
+    printf("SIGUSR1 received for pid %u with emergency pressure and high gradient\n",mypid); 
+    pressure_level = EMER_PRESSURE;
+    gradient_level = HI_GRADIENT;
   }
 }
 
@@ -163,8 +190,9 @@ int main(int argc, char* argv[])
   
   
 
-  // initialize the pressure level
+  // initialize the pressure level and gradient level
   pressure_level = 0;
+  gradient_level = 0;
 
   if(argc<5){
     // JRF:  Adding new argument for number of children
