@@ -22,6 +22,7 @@ pid_t mypid;
 int initDelay[100]; // in milliseconds
 int sleepBetweenIters[100]; // in milliseconds
 int adminRelief[100];
+int percentRecover[100];
 
 
 // JRF:  Added msize_orig and pressure_level to store original mem size and current level of pressure
@@ -73,6 +74,24 @@ void relieve_memory() {
 
 }
 
+// JRF:  Expand memory here due to relieved pressure
+void expand_memory(int child_num) {
+
+  int i;
+  int increased_memory = (msize * (percentRecover[child_num] + 100)) / 100;
+
+  if(increased_memory > msize_orig)
+    increased_memory = msize_orig;
+
+  // free memory 
+  for(i=msize; i<increased_memory; i++){
+    buffer[i] = malloc(1024*1024);
+  }
+  //resize the memory amount
+    msize = increased_memory;
+}
+
+
 // This function emualtes a random memory access
 void rand_access()
 {
@@ -103,7 +122,7 @@ int local_access(int addr)
 int parseChildrenFile(FILE *fp, int numLines) {
   int i;
   for(i=0;i < numLines;i++) {
-    if(fscanf(fp,"%d %d %d",&initDelay[i],&sleepBetweenIters[i],&adminRelief[i]) == EOF)
+    if(fscanf(fp,"%d %d %d %d",&initDelay[i],&sleepBetweenIters[i],&adminRelief[i],&percentRecover[i]) == EOF)
       return -1;   
   }
   return 0;
@@ -116,9 +135,9 @@ void outputChildrenSettings(int numLines) {
   printf("number children: %d\n",numLines);
   for(i=0;i < numLines;i++)
     if(adminRelief[i] == 1)
-      printf("line %d:  delay = %d, sleep = %d and apply relief\n",i,initDelay[i],sleepBetweenIters[i]);
+      printf("line %d:  delay = %d, sleep = %d, percentRecovery = %d and apply relief\n",i,initDelay[i],sleepBetweenIters[i],percentRecover[i]);
     else
-      printf("line %d:  delay = %d, sleep = %d and without relief\n",i,initDelay[i],sleepBetweenIters[i]);     
+      printf("line %d:  delay = %d, sleep = %d, percentRecovery = %d and without relief\n",i,initDelay[i],sleepBetweenIters[i],percentRecover[i]);     
   printf("---------------------------------\n");
 }
 
@@ -291,6 +310,11 @@ int main(int argc, char* argv[])
     if(pressure_level != 0 && adminRelief[child_num]) {
       printf("Relief on its way, new msize = %d\n",msize);
       relieve_memory();
+    }
+    // JRF:  Add this check for memory expansion if pressure is relieved
+    if(pressure_level == 0 && msize < msize_orig) {
+      printf("Expand a might bit, new msize = %d\n",msize);
+      expand_memory(child_num);
     }
      printf("[%d] %d iteration\n", mypid, k);
      if(!locality){

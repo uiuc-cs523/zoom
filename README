@@ -83,3 +83,13 @@ Requirement:  Improve work program in various ways
 1.  Added a third column to children.properties allowing process to apply relief or not
 2.  Converted the delays in children.properties from seconds to milliseconds for finer control
 3.  Plotted a result of showing the effect of memory handling versus no memory handling
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 8
+------------------------------------------------------
+Requirement:  Improve memory pressure handling
+------------------------------------------------------
+1.  Implemented restoration back to original memory levels if memory pressure is relieved.
+2.  Made recovery percent adjustable in the children.properties file.
+
