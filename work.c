@@ -154,7 +154,7 @@ int local_access(int addr)
 
 // This routine reads the children.properties file and loads in the properties for the children
 // The children.properties file has the following line properties
-// initdelay iteration_delay adminRelief
+// initdelay iterationDelay adminRelief, percentRecovery
 int parseChildrenFile(FILE *fp, int numLines) {
   int i;
   for(i=0;i < numLines;i++) {

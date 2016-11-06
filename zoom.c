@@ -27,7 +27,7 @@ MODULE_DESCRIPTION("ZOOM Project");
 //#define DEBUG 1
 //#define SELECTIVE_EMP
 #define MAX_STR 80
-#define MAX_ENTRIES 10
+#define MAX_ENTRIES 30
 // period in milliseconds
 #define PERIOD 50
 #define NPAGES 128
@@ -42,6 +42,7 @@ MODULE_DESCRIPTION("ZOOM Project");
 #define HI_PRESSURE 3
 #define EMER_PRESSURE 5
 #define TOP_OFFENDER 10
+#define NOTIFY_THRES 20
 
 // JRF:  Adding this type for memory pressure modeling
 typedef struct {
@@ -99,6 +100,8 @@ static int Major;
 static mem_pressure_t mem_press;
 int active_selective_emphasis;
 int active_gradient_state;
+int active_overcount_renotify;
+int active_mem_pressure;
 
 static int zoom_show(struct seq_file *m, void *v);
 static int zoom_open(struct inode *node, struct file *fp);
@@ -119,6 +122,7 @@ int get_mem_stats(int pid, unsigned long *min_flt, unsigned long *maj_flt, unsig
 static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss);
 static void check_mem_pressure(mem_pressure_t *mem_press);
 static void notify_mem_pressure(mem_pressure_t *mem_press, unsigned long top_pid, unsigned long second_pid);
+static void notify_mem_single_task(mem_pressure_t *mem_press,  struct task_struct *new_task);
 
 static const struct file_operations zoom_file_ops = {  
   .owner = THIS_MODULE,
@@ -143,10 +147,14 @@ int __init zoom_init(void)
   int ret;
   int time_speed = HZ;
   
-  // turn off selective_emphasis
+  // turn on/off memory pressure modeling
+  active_mem_pressure = 0;
+  // turn on/off selective_emphasis
   active_selective_emphasis = 0;
-  // turn off gradient state
+  // turn on/off gradient state
   active_gradient_state = 0;
+  // turn on/off gradient state
+  active_overcount_renotify = 0;
 
    #ifdef DEBUG
    printk(KERN_ALERT "ZOOM MODULE LOADING\n");
@@ -410,6 +418,7 @@ static int get_token_from_proc(char *input_string, int length, int *offset) {
   
 }
 
+// JRF:  TODO -- Inform new processes of memory pressure if significant
 static int perform_register(unsigned int pid) {
 
   zoom_PCB *new_task_entry;
@@ -427,22 +436,6 @@ static int perform_register(unsigned int pid) {
     return -1;
   }
 
-  //if(current_num_tasks == 0 && (zoom_wq != NULL)) {
-  //  printk(KERN_INFO "something wrong definely happened -- zoom_wq should be NULL\n");
-  //  return -1;
-  //}
-
-  // TODO:  If the current_num_task is zero, create work queue here
-  // probably should just check for zoom_wq == NULL
-  //  if(current_num_tasks == 0) {
-  //    printk(KERN_INFO "Create work queue here\n");
-  //    zoom_wq = create_workqueue("zoom_queue");
-  //  }
-  
-  // Should only create a work structure if one does not currently exist
-  // if(zoom_wq) {
-    // See if the work struct currently exists or is NULL.  If NULL, allocate.
-  //printk(KERN_INFO "On registration of process %d the value of zoom work is %p\n",pid,zoom_work);
   if(zoom_work == NULL) {
     //printk("Trying to allocate a work structure\n");
     zoom_work = (zoom_work_t*) kmalloc(sizeof(zoom_work_t),GFP_KERNEL);
@@ -459,13 +452,8 @@ static int perform_register(unsigned int pid) {
       printk(KERN_INFO "Something happened wrong with work structure allocation\n");
       return -1;
     }
-  } // end if zoom_work is NULL
-    //  } // end if zoom_wq is NULL
-  //else {
-  //  printk(KERN_INFO "Something happened wrong with work queue allocation\n");
-  //  return -1;
-  //}
-  
+  } 
+
   // Add to the current list of tasks
   current_num_tasks++;
 
@@ -488,7 +476,12 @@ static int perform_register(unsigned int pid) {
   // Need to add this to the list
   list_add(&new_task_entry->list,&zoom_task_list.list);
   
-  
+  // JRF: Control the memory pressure logic within one conditional that can be toggled
+  if(active_mem_pressure) {
+    // Here I will check the current state of memory pressure and send a signal to process if memory pressure is not low
+    if(mem_press.pressure_state != LOW_PRESSURE)
+      notify_mem_single_task(&mem_press, new_task_entry->zoom_task);
+  }
 
   return 0;
 
@@ -647,19 +640,20 @@ static void zoom_wq_function(struct work_struct *work) {
   // release the lock
   up(&zoom_lock);
   
-  // JRF:  Calculate memory pressure level here (TODO:  add it loop above when more than one process is registered)    
-  calc_mem_pressure(&mem_press, tot_rss);
-  //printk(KERN_INFO "The total rss value is %d\n",tot_rss);
-  check_mem_pressure(&mem_press);
-  // Notify processes of mem pressure change if changed
-  notify_mem_pressure(&mem_press,top_user_pid,second_user_pid);
+  // JRF: Control the memory pressure logic within one conditional that can be toggled
+  if(active_mem_pressure) {
+    // JRF:  Calculate memory pressure level here (TODO:  add it loop above when more than one process is registered)    
+    calc_mem_pressure(&mem_press, tot_rss);
+    //printk(KERN_INFO "The total rss value is %d\n",tot_rss);
+    check_mem_pressure(&mem_press);
+    // Notify processes of mem pressure change if changed
+    notify_mem_pressure(&mem_press,top_user_pid,second_user_pid);
+  }
   
   // place it back in queue
   ret = queue_delayed_work(zoom_wq, (struct delayed_work *)work, msecs_to_jiffies(PERIOD));
   
-  
   return;
-
 }
 
  static int dev_open(struct inode *node, struct file *fp) {
@@ -765,16 +759,23 @@ static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss) {
 //static void check_mem_pressure(mem_pressure_t *mem_press, unsigned int pid) {
 static void check_mem_pressure(mem_pressure_t *mem_press) {  
 
+  static int notify_count = 0;
+
   if(mem_press->tot_rss > (mem_press->prev_tot_rss + RSS_SINGLE_DELTA_THRES))
     mem_press->gradient_state = 1;
   else
     mem_press->gradient_state = 0;
+
+  // Reset notify_count 
+  if(mem_press->tot_rss < RSS_THRES_MED)
+    notify_count = 0;
 
   // Check for low pressure state change
   if(mem_press->tot_rss < RSS_THRES_MED && mem_press->pressure_state != LOW_PRESSURE) {
     // Set state to medium pressure
     mem_press->pressure_state = LOW_PRESSURE;
     mem_press->require_notify = 1;
+    notify_count = 0;    
   }
 
   // Check for med pressure state change
@@ -782,6 +783,7 @@ static void check_mem_pressure(mem_pressure_t *mem_press) {
     // Set state to medium pressure
     mem_press->pressure_state = MED_PRESSURE;
     mem_press->require_notify = 1;
+    notify_count = 0;
   }
 
   // Check for med pressure state change
@@ -789,6 +791,7 @@ static void check_mem_pressure(mem_pressure_t *mem_press) {
     // Set state to high pressure
     mem_press->pressure_state = HI_PRESSURE;
     mem_press->require_notify = 1;
+    notify_count = 0;
   }
  
   // Check for low pressure state change
@@ -796,7 +799,15 @@ static void check_mem_pressure(mem_pressure_t *mem_press) {
     // Set state to medium pressure
     mem_press->pressure_state = EMER_PRESSURE;
     mem_press->require_notify = 1;
-  }   
+    notify_count = 0;
+  }
+
+  // JRF:  Add overcount renotification here
+  if(active_overcount_renotify && notify_count == NOTIFY_THRES && mem_press->pressure_state != LOW_PRESSURE) {
+    mem_press->require_notify = 1;
+    notify_count = 0;
+  }
+   
   return;  
 }
 
@@ -855,7 +866,37 @@ static void notify_mem_pressure(mem_pressure_t *mem_press, unsigned long top_pid
   return;
 }
 
-  
+// JRF:  This task is to send a single signal to a new task if the memory pressure is not low
+static void notify_mem_single_task(mem_pressure_t *mem_press,  struct task_struct *new_task) {
+  int ret;
+  struct siginfo si;
+  int gradient;
+
+  // determine gradient state here
+  if(active_gradient_state)
+    gradient = mem_press->gradient_state;
+  else
+    gradient = 0;
+
+  // Acquire lock
+  down_trylock(&zoom_lock);
+
+  // send a signal to the process of pressure level
+  si.si_signo = SIGUSR1;
+  si.si_code = SI_QUEUE;
+  // JRF:  including gradient value with the signal value
+  // JRF:  Also, add a bit more functionality here with advising top two offenders
+  si.si_errno = mem_press->pressure_state + gradient;
+  ret = send_sig_info(SIGUSR1,&si,new_task);
+  if(ret < 0) {
+    printk(KERN_INFO "Problem sending signal\n");
+    return;
+  }
+  // release lock
+  up(&zoom_lock);
+
+  return;
+}  
 
 // Register init and exit funtions
 module_init(zoom_init);
