@@ -115,4 +115,23 @@ Requirement:  Add gradient signaling to zoom (large increment swings in memory a
 2.  Changed signaling in work to receive gradient level.
 Note:  This was done a bit sloppy and needs to be cleaned up a bit.  
 Bottom line:  it works for now.
-
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 10
+------------------------------------------------------
+Requirement:  A technique I would like to call "selective emphasis" is employed here.  The idea is that the two worst memory 
+offenders get an extra signal so that they know that they are the ones with the most to give
+------------------------------------------------------
+1.  Added code to zoom to send offset on error code for top two processes with highest rss. 
+2.  Added code for work to handle offset and process top offender for top two processes.
+3.  Added switches in zoom code to activate gradient notification as well as selective emphasis notification.
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates upcoming to version 11
+------------------------------------------------------
+1.  (TODO) Create a test case with 20 processes running over 45 seconds or so.
+2.  (TODO) Create a counter in zoom that deals counts if pressure does not reduce over a certain time and resends signals.
+3.  (TODO) Create a figure showing divisions of how memory pressure strategies can be dealt with.
+4.  (TODO) Create a tally in zoom to count size of virtual memory region for each process.

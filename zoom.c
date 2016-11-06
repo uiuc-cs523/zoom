@@ -25,6 +25,7 @@ MODULE_AUTHOR("Group_7");
 MODULE_DESCRIPTION("ZOOM Project");
 
 //#define DEBUG 1
+//#define SELECTIVE_EMP
 #define MAX_STR 80
 #define MAX_ENTRIES 10
 // period in milliseconds
@@ -40,6 +41,7 @@ MODULE_DESCRIPTION("ZOOM Project");
 #define MED_PRESSURE 1
 #define HI_PRESSURE 3
 #define EMER_PRESSURE 5
+#define TOP_OFFENDER 10
 
 // JRF:  Adding this type for memory pressure modeling
 typedef struct {
@@ -95,6 +97,8 @@ static int Major;
 
 // JRF:  For memory pressure modeling
 static mem_pressure_t mem_press;
+int active_selective_emphasis;
+int active_gradient_state;
 
 static int zoom_show(struct seq_file *m, void *v);
 static int zoom_open(struct inode *node, struct file *fp);
@@ -114,7 +118,7 @@ int get_mem_stats(int pid, unsigned long *min_flt, unsigned long *maj_flt, unsig
 // JRF:  Adding this for memory pressure
 static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss);
 static void check_mem_pressure(mem_pressure_t *mem_press);
-static void notify_mem_pressure(mem_pressure_t *mem_press);
+static void notify_mem_pressure(mem_pressure_t *mem_press, unsigned long top_pid, unsigned long second_pid);
 
 static const struct file_operations zoom_file_ops = {  
   .owner = THIS_MODULE,
@@ -138,6 +142,11 @@ int __init zoom_init(void)
   unsigned long page_alloc;
   int ret;
   int time_speed = HZ;
+  
+  // turn off selective_emphasis
+  active_selective_emphasis = 0;
+  // turn off gradient state
+  active_gradient_state = 0;
 
    #ifdef DEBUG
    printk(KERN_ALERT "ZOOM MODULE LOADING\n");
@@ -575,8 +584,12 @@ static void zoom_wq_function(struct work_struct *work) {
   unsigned long *buffer;
   static int index = 0;
   unsigned int limit;
-  unsigned long lpid;
+  //unsigned long lpid;
   unsigned long tot_rss = 0;
+  unsigned long top_user_pid = 0;
+  unsigned long second_user_pid = 0;
+  unsigned long top_user_rss = 0;
+  unsigned long second_user_rss = 0;
 
   // JRF:  Comment this out for now
   //printk(KERN_INFO "entered work queue function\n");
@@ -595,30 +608,27 @@ static void zoom_wq_function(struct work_struct *work) {
     // Get stats for task in list
     get_mem_stats(tmp->pid, &min_flt, &maj_flt, &rss, &hiwater);
     
-    // Copy time in jiffies to queue
-    //scratch = jiffies;
-    // Compute utilization here
-    //utilization = (rss + hiwater) * HZ;
-
     // TODO:  have index wrap-around the page size
     limit = (NPAGES * PAGE_SIZE / sizeof(unsigned long)) - 1;
     if(index >= limit)
        index = 0;
-    // Copy cpu utilization to queue
-    lpid = (unsigned long) tmp->pid;
-    //buffer[index++] = lpid;
-    // Copy minor fault count to queue
-    //buffer[index++] = min_flt;
-    // Copy major fault count to queue
-    //buffer[index++] = maj_flt;
-    // Copy cpu utilization to queue
-    //buffer[index++] = rss; 
     
     // Sum up the rss here
     tot_rss += rss;
 
-    // JRF:  Decide signal here
-    //check_mem_pressure(&mem_press, tmp->pid); 
+    if(rss > top_user_rss) {
+      // check if second user is empty, else overwrite with current top
+      if(second_user_pid != 0 && top_user_pid != 0) {
+	second_user_pid = top_user_pid;
+	second_user_rss = top_user_rss;
+      }
+      top_user_rss = rss;
+      top_user_pid = tmp->pid;      
+    }
+    else if(rss > second_user_rss) {
+      	second_user_pid = tmp->pid;
+	second_user_rss = rss;
+  }
 
     // For now just print to kernel log
 #ifdef DEBUG
@@ -626,16 +636,15 @@ static void zoom_wq_function(struct work_struct *work) {
 #endif   
   }
 
-    buffer[index++] = jiffies;
-    // Copy minor fault count to queue
-    buffer[index++] = 0;
-    // Copy major fault count to queue
-    buffer[index++] = 0;
-    // Copy cpu utilization to queue
-    buffer[index++] = tot_rss; 
-
+  buffer[index++] = jiffies;
+  // Copy minor fault count to queue
+  buffer[index++] = 0;
+  // Copy major fault count to queue
+  buffer[index++] = 0;
+  // Copy cpu utilization to queue
+  buffer[index++] = tot_rss; 
+  
   // release the lock
-  //  spin_unlock(&zoom_lock);
   up(&zoom_lock);
   
   // JRF:  Calculate memory pressure level here (TODO:  add it loop above when more than one process is registered)    
@@ -643,14 +652,12 @@ static void zoom_wq_function(struct work_struct *work) {
   //printk(KERN_INFO "The total rss value is %d\n",tot_rss);
   check_mem_pressure(&mem_press);
   // Notify processes of mem pressure change if changed
-  notify_mem_pressure(&mem_press);
-
+  notify_mem_pressure(&mem_press,top_user_pid,second_user_pid);
+  
   // place it back in queue
-  //  if(counter < 200) {
   ret = queue_delayed_work(zoom_wq, (struct delayed_work *)work, msecs_to_jiffies(PERIOD));
-    //    counter++;
-    //  }
-
+  
+  
   return;
 
 }
@@ -794,12 +801,19 @@ static void check_mem_pressure(mem_pressure_t *mem_press) {
 }
 
 // JRF:  This notifies the registered processes of any changes to the mem pressure state
-static void notify_mem_pressure(mem_pressure_t *mem_press) {
+static void notify_mem_pressure(mem_pressure_t *mem_press, unsigned long top_pid, unsigned long second_pid) {
   int ret;
   struct siginfo si;
   struct task_struct *task;
   struct list_head *pos;
   zoom_PCB *tmp;
+  int gradient;
+
+  // determine gradient state here
+  if(active_gradient_state)
+    gradient = mem_press->gradient_state;
+  else
+    gradient = 0;
 
   // Check for notify flag set and send all processes a signal if set
   if(mem_press->require_notify == 1) {
@@ -821,20 +835,27 @@ static void notify_mem_pressure(mem_pressure_t *mem_press) {
       si.si_signo = SIGUSR1;
       si.si_code = SI_QUEUE;
       // JRF:  including gradient value with the signal value
-      si.si_errno = mem_press->pressure_state + mem_press->gradient_state;
+      // JRF:  Also, add a bit more functionality here with advising top two offenders
+      if((tmp->pid == top_pid || tmp->pid == second_pid) && active_selective_emphasis)
+	si.si_errno = mem_press->pressure_state + gradient + TOP_OFFENDER;
+      else
+	si.si_errno = mem_press->pressure_state + gradient;
       ret = send_sig_info(SIGUSR1,&si,task);
       //printk(KERN_INFO "Sent signal for process %d for rss %lu",pid,mem_press->tot_rss);
       if(ret < 0) {
 	printk(KERN_INFO "Problem sending signal\n");
 	return;
       }
-      
     }
     // release lock
     up(&zoom_lock);
+
   } // end notify check
 
+  return;
 }
+
+  
 
 // Register init and exit funtions
 module_init(zoom_init);

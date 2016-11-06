@@ -20,16 +20,18 @@
 #define EMER_PRESSURE 3
 #define LOW_GRADIENT 0
 #define HI_GRADIENT 1
+#define TOP_OFFENDER 10
 
 
 char *buffer[1024];
 void sigusr_handler(int sig);
-struct sigaction sa;
+//struct sigaction sa;
 pid_t mypid;
 int initDelay[100]; // in milliseconds
 int sleepBetweenIters[100]; // in milliseconds
 int adminRelief[100];
 int percentRecover[100];
+int prime_offender;
 
 
 // JRF:  Added msize_orig and pressure_level to store original mem size and current level of pressure
@@ -38,15 +40,14 @@ int pressure_level;
 int gradient_level;
 
 // JRF:  Added for signal handling
-//void sigusr_handler(int sig)
-//{
-//  printf("SIGUSR1 received for pid %u with value %d\n",mypid, sig);
-//}
-
-// JRF:  Added for signal handling
-static void hdl (int sig, siginfo_t *siginfo, void *context)
+static void hdl_mem_pressure_not (int sig, siginfo_t *siginfo, void *context)
 {
   int pressure_state = siginfo->si_errno;
+  if(pressure_state > TOP_OFFENDER) {
+    prime_offender = 1; 
+    pressure_state -= TOP_OFFENDER;
+    printf("Process is a top offender\n");
+  }
   if(pressure_state == 0) {
     printf("SIGUSR1 received for pid %u with low pressure\n",mypid);
     pressure_level = LOW_PRESSURE;
@@ -89,8 +90,16 @@ void relieve_memory() {
 
   // A first cut would be to reduce memory usage by 10%
   
-  int memory_usage = msize * (10 - pressure_level) / 10;
+  int memory_usage;
   int i;
+
+  if(prime_offender == 1) {
+    memory_usage = msize * (10 - (pressure_level + 1)) / 10;
+    prime_offender = 0;
+    printf("Prime offender will give til it hurts\n");
+  }
+  else
+    memory_usage = msize * (10 - pressure_level) / 10;
 
   // free memory 
   for(i=memory_usage; i<msize; i++){
@@ -265,19 +274,11 @@ int main(int argc, char* argv[])
     child_num++;
   }
 
-  //  sa.sa_handler = sigusr_handler;
-  //  sa.sa_flags = 0; // or SA_RESTART
-  //  sigemptyset(&sa.sa_mask);
-
-  //  if (sigaction(SIGUSR1, &sa, NULL) == -1) {
-  //   perror("sigaction");
-  //    exit(1);
-  //  }
-
+  // JRF:  Define signal handler for memory pressure
   memset (&act, '\0', sizeof(act));
  
   /* Use the sa_sigaction field because the handles has two additional parameters */
-  act.sa_sigaction = &hdl;
+  act.sa_sigaction = &hdl_mem_pressure_not;
  
   /* The SA_SIGINFO flag tells sigaction() to use the sa_sigaction field, not sa_handler. */
   act.sa_flags = SA_SIGINFO;
