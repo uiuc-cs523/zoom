@@ -49,37 +49,51 @@ static void hdl_mem_pressure_not (int sig, siginfo_t *siginfo, void *context)
     printf("Process is a top offender\n");
   }
   if(pressure_state == 0) {
+#ifdef DEBUG
     printf("SIGUSR1 received for pid %u with low pressure\n",mypid);
+#endif
     pressure_level = LOW_PRESSURE;
     gradient_level = LOW_GRADIENT;
   }
   else if(pressure_state == 1) {
+#ifdef DEBUG
     printf("SIGUSR1 received for pid %u with medium pressure and low gradient\n",mypid);
+#endif
     pressure_level = MED_PRESSURE;
     gradient_level = LOW_GRADIENT;    
   }
   else if(pressure_state == 2) {
+#ifdef DEBUG
     printf("SIGUSR1 received for pid %u with medium pressure and high gradient\n",mypid);
+#endif
     pressure_level = MED_PRESSURE;
     gradient_level = HI_GRADIENT; 
   }
   else if(pressure_state == 3)  {
+#ifdef DEBUG
     printf("SIGUSR1 received for pid %u with high pressure and low gradient\n",mypid);
+#endif
     pressure_level = HI_PRESSURE;
     gradient_level = LOW_GRADIENT;
   }
   else if(pressure_state == 4)  {
+#ifdef DEBUG
     printf("SIGUSR1 received for pid %u with high pressure and high gradient\n",mypid);
+#endif
     pressure_level = HI_PRESSURE;
     gradient_level = HI_GRADIENT;
   }
   else if(pressure_state == 5)  {
+#ifdef DEBUG
     printf("SIGUSR1 received for pid %u with emergency pressure and low gradient\n",mypid);
+#endif
     pressure_level = EMER_PRESSURE;
     gradient_level = LOW_GRADIENT;
   }
   else {
+#ifdef DEBUG
     printf("SIGUSR1 received for pid %u with emergency pressure and high gradient\n",mypid); 
+#endif
     pressure_level = EMER_PRESSURE;
     gradient_level = HI_GRADIENT;
   }
@@ -196,8 +210,13 @@ int main(int argc, char* argv[])
   struct timespec initialDelay;
   struct timespec iterationDelay;
   int seconds, milliseconds;
+  struct timeval outputTime;
+  struct timeval initTime;
+  unsigned long initSeconds,initMicroseconds;
   
-  
+
+  // 
+  gettimeofday(&initTime,NULL);
 
   // initialize the pressure level and gradient level
   pressure_level = 0;
@@ -311,11 +330,23 @@ int main(int argc, char* argv[])
   iterationDelay.tv_sec = seconds;
   iterationDelay.tv_nsec = milliseconds;  
   printf("This is the child_num = %d and the iter delay = %d seconds and %d milliseconds\n",child_num,seconds,milliseconds);
+#ifdef DEBUG
+  // print start time here
+  gettimeofday(&outputTime,NULL);
+  initSeconds = outputTime.tv_sec - initTime.tv_sec;
+  initMicroseconds =  outputTime.tv_usec - initTime.tv_usec;
+  printf("Presleep: current time of %lu and %lu\n",initSeconds,initMicroseconds);
+#endif
   nanosleep(&initialDelay,NULL);
-
-
+#ifdef DEBUG
+  // print end time here
+  gettimeofday(&outputTime,NULL);
+  initSeconds = outputTime.tv_sec - initTime.tv_sec;
+  initMicroseconds =  outputTime.tv_usec - initTime.tv_usec;
+  printf("Postsleep:  current time of %lu seconds and %lu microseconds\n",initSeconds,initMicroseconds);
+#endif
   // 3. Allocate memory blocks
-  for(i=0; i<msize; i++){
+    for(i=0; i<msize; i++){
     buffer[i] = malloc(1024*1024);
     // if allocation fails, unwind and dealloc as you go
     if(buffer[i] == NULL){
@@ -337,12 +368,16 @@ int main(int argc, char* argv[])
     nanosleep(&iterationDelay,NULL);    
     // JRF:  Add this check for memory pressure relief
     if(pressure_level != 0 && adminRelief[child_num]) {
+#ifdef DEBUG
       printf("Relief on its way, new msize = %d\n",msize);
+#endif
       relieve_memory();
     }
     // JRF:  Add this check for memory expansion if pressure is relieved
     if(pressure_level == 0 && msize < msize_orig) {
+#ifdef DEBUG
       printf("Expand a might bit, new msize = %d\n",msize);
+#endif
       expand_memory(child_num);
     }
      printf("[%d] %d iteration\n", mypid, k);

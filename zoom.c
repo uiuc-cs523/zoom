@@ -43,6 +43,8 @@ MODULE_DESCRIPTION("ZOOM Project");
 #define EMER_PRESSURE 5
 #define TOP_OFFENDER 10
 #define NOTIFY_THRES 20
+// for different forensic reports
+#define STANDARD_REPORT 0
 
 // JRF:  Adding this type for memory pressure modeling
 typedef struct {
@@ -102,6 +104,7 @@ int active_selective_emphasis;
 int active_gradient_state;
 int active_overcount_renotify;
 int active_mem_pressure;
+int report_type;
 
 static int zoom_show(struct seq_file *m, void *v);
 static int zoom_open(struct inode *node, struct file *fp);
@@ -148,13 +151,15 @@ int __init zoom_init(void)
   int time_speed = HZ;
   
   // turn on/off memory pressure modeling
-  active_mem_pressure = 0;
+  active_mem_pressure = 1;
   // turn on/off selective_emphasis
   active_selective_emphasis = 0;
   // turn on/off gradient state
   active_gradient_state = 0;
   // turn on/off gradient state
   active_overcount_renotify = 0;
+  // set the reporting type for mmap
+  report_type = STANDARD_REPORT;
 
    #ifdef DEBUG
    printk(KERN_ALERT "ZOOM MODULE LOADING\n");
@@ -565,20 +570,15 @@ static int perform_deregister(unsigned int pid) {
 // 3.  It queues the work_struct for the next period
 static void zoom_wq_function(struct work_struct *work) {
 
-  //zoom_work_t *work_fun = (zoom_work_t*)work;
-  //int found_in_list = 0;
   struct list_head *pos;
   zoom_PCB *tmp;
-  unsigned long min_flt, maj_flt, rss, hiwater;
+  unsigned long min_flt, maj_flt, rss, total_vm;
   int ret;
-  //static int count = 0;
-  //unsigned long scratch;
-  //unsigned long utilization;
   unsigned long *buffer;
   static int index = 0;
   unsigned int limit;
-  //unsigned long lpid;
   unsigned long tot_rss = 0;
+  unsigned long tot_reg_vm = 0; // The sum total of all registered process VM
   unsigned long top_user_pid = 0;
   unsigned long second_user_pid = 0;
   unsigned long top_user_rss = 0;
@@ -599,7 +599,7 @@ static void zoom_wq_function(struct work_struct *work) {
   list_for_each(pos, &zoom_task_list.list) {
     tmp = list_entry(pos,zoom_PCB,list);
     // Get stats for task in list
-    get_mem_stats(tmp->pid, &min_flt, &maj_flt, &rss, &hiwater);
+    get_mem_stats(tmp->pid, &min_flt, &maj_flt, &rss, &total_vm);
     
     // TODO:  have index wrap-around the page size
     limit = (NPAGES * PAGE_SIZE / sizeof(unsigned long)) - 1;
@@ -608,6 +608,16 @@ static void zoom_wq_function(struct work_struct *work) {
     
     // Sum up the rss here
     tot_rss += rss;
+    tot_reg_vm += tot_reg_vm;
+
+    // time
+    buffer[index++] = jiffies;
+    // Copy minor fault count to queue
+    buffer[index++] = tmp->pid;
+    // Copy major fault count to queue
+    buffer[index++] = total_vm;
+    // Copy cpu utilization to queue
+    buffer[index++] = tot_rss; 
 
     if(rss > top_user_rss) {
       // check if second user is empty, else overwrite with current top
@@ -625,17 +635,9 @@ static void zoom_wq_function(struct work_struct *work) {
 
     // For now just print to kernel log
 #ifdef DEBUG
-    printk(KERN_INFO "For process %d, min flt = %lu, maj flt = %lu, rss = %lu, hiwater = %lu\n",tmp->pid,min_flt,maj_flt,rss,hiwater); 
+    printk(KERN_INFO "For process %d, min flt = %lu, maj flt = %lu, rss = %lu, total_vm = %lu\n",tmp->pid,min_flt,maj_flt,rss,total_vm); 
 #endif   
   }
-
-  buffer[index++] = jiffies;
-  // Copy minor fault count to queue
-  buffer[index++] = 0;
-  // Copy major fault count to queue
-  buffer[index++] = 0;
-  // Copy cpu utilization to queue
-  buffer[index++] = tot_rss; 
   
   // release the lock
   up(&zoom_lock);
@@ -715,7 +717,7 @@ struct task_struct* find_task_by_pid(unsigned int nr)
 // SINCE THE LAST INVOCATION OF THE FUNCTION FOR THE SPECIFIED PID.
 // OTHERWISE IT RETURNS -1
 int get_mem_stats(int pid, unsigned long *min_flt, unsigned long *maj_flt,
-         unsigned long *rss, unsigned long *hiwater)
+         unsigned long *rss, unsigned long *total_vm)
 {
         int ret = -1;
         struct task_struct* task;
@@ -730,7 +732,7 @@ int get_mem_stats(int pid, unsigned long *min_flt, unsigned long *maj_flt,
 	  *maj_flt=task->maj_flt;
 	  // Rather than uptime, get the rss value
 	  *rss = get_mm_rss(task->mm);
-	  *hiwater = get_mm_hiwater_rss(task->mm);
+	  *total_vm = task->mm->total_vm;
 	  // Reset the number of page faults
 	  task->maj_flt = 0;
 	  task->min_flt = 0;

@@ -129,14 +129,25 @@ offenders get an extra signal so that they know that they are the ones with the 
 ------------------------------------------------------
 ------------------------------------------------------
 ------------------------------------------------------
-Updates upcoming to version 11
+Updates made to version 11
 ------------------------------------------------------
-Requirement:  See what I have up to this point and see what directions make sense
+Requirement:  Miscellaneous improvements here
 ------------------------------------------------------
 1.  Created a test case with 20 processes running over 45 seconds or so.
 2.  Created a counter in zoom that deals counts if pressure does not reduce over a certain time and resends signals.
 3.  Created a flag for turning off memory pressure handling in zoom.
 4.  Added signaling if a process is registered during elevated memory pressure.
-5.  (TODO) Create a figure showing divisions of how memory pressure strategies can be dealt with.
-6.  (TODO) Create a tally in zoom to count size of virtual memory region for each process.
-7.  (TODO) Informed any newly registered processes of significant pressure upon registration.  -- Toying with the idea of blocking.
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 12
+------------------------------------------------------
+Requirement:  Improve forensics for improved testing
+------------------------------------------------------
+1.  Added debug option to turn off print statement for work.
+2.  Added reporting for virtual memory total for each process in zoom.
+3.  Added writing of virtual memory for monitor program.
+4.  Added reporting of start and end time for initial sleep to check that forks start at proper time.
+5.  Created options on zoom to change the output values for the memory mapping.  Start with process by process default.
+
+
