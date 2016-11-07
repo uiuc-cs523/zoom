@@ -149,5 +149,14 @@ Requirement:  Improve forensics for improved testing
 3.  Added writing of virtual memory for monitor program.
 4.  Added reporting of start and end time for initial sleep to check that forks start at proper time.
 5.  Created options on zoom to change the output values for the memory mapping.  Start with process by process default.
-
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 13
+------------------------------------------------------
+Requirement:  Improve monitoring program
+------------------------------------------------------
+1.  Added two arguments to monitoring program to write output directly to file.  One is raw the other is results.
+2.  Changed program to only read good data and ignore garbage.
+3.  Summary file outputs the total VM and RSS.
 

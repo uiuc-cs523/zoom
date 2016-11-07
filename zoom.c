@@ -584,11 +584,6 @@ static void zoom_wq_function(struct work_struct *work) {
   unsigned long top_user_rss = 0;
   unsigned long second_user_rss = 0;
 
-  // JRF:  Comment this out for now
-  //printk(KERN_INFO "entered work queue function\n");
-
-  //return;
-
   buffer = (unsigned long*)memBuf;
 
   // get the spinlock
@@ -631,14 +626,15 @@ static void zoom_wq_function(struct work_struct *work) {
     else if(rss > second_user_rss) {
       	second_user_pid = tmp->pid;
 	second_user_rss = rss;
-  }
-
+    }
     // For now just print to kernel log
 #ifdef DEBUG
     printk(KERN_INFO "For process %d, min flt = %lu, maj flt = %lu, rss = %lu, total_vm = %lu\n",tmp->pid,min_flt,maj_flt,rss,total_vm); 
 #endif   
   }
-  
+  // add a -1 to the end of the file to help monitor program stop properly
+  buffer[index] = -1;
+
   // release the lock
   up(&zoom_lock);
   

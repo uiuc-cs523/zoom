@@ -8,9 +8,11 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define NPAGES (128)   // The size of profiler buffer (Unit: memory page)
 #define BUFD_MAX 48000 // The max number of profiled samples stored in the profiler buffer
+#define MAX_FILESIZE 80
 
 static int buf_fd = -1;
 static int buf_len;
@@ -51,6 +53,47 @@ int main(int argc, char* argv[])
   //int index = 0;
   long index = 0;
   int i;
+  char raw_results[MAX_FILESIZE];
+  char summary_results[MAX_FILESIZE];
+  int copy_length;
+  FILE *fpRaw;
+  FILE *fpSummary;
+  long current_time = 0;
+  long sum_vm = 0;
+  long sum_rss = 0;
+
+  // Adding two new arguments for composing different files (raw and summary results)
+  if(argc != 3) {
+    printf("Usage:  monitor <raw results> <summary results>\n");
+    return -1;
+  }
+
+  //  Copy string of first filename to raw_results array
+  if(strlen(argv[1]) < MAX_FILESIZE)
+     copy_length = strlen(argv[1]);
+  else
+    copy_length = MAX_FILESIZE;
+  strncpy(raw_results,argv[1],copy_length);
+
+  // Open file for raw results
+  if((fpRaw = fopen(raw_results,"w+")) == NULL) {
+    printf("Could not open file %s\n",raw_results);
+    return -1;
+  }
+
+  //  Copy string of second filename to summary_results array
+  if(strlen(argv[2]) < MAX_FILESIZE)
+     copy_length = strlen(argv[2]);
+  else
+    copy_length = MAX_FILESIZE;
+  strncpy(summary_results,argv[2],copy_length);
+
+  // Open file for raw results
+  if((fpSummary = fopen(summary_results,"w+")) == NULL) {
+    fclose(fpRaw);
+    printf("Could not open file %s\n",summary_results);
+    return -1;
+  }
 
   // Open the char device and mmap()
   buf = buf_init("node");
@@ -65,35 +108,63 @@ int main(int argc, char* argv[])
   // Print description for each column
   //printf("Time_(jiffies) Minor_faults Major_faults CPU_utilization\n");
   //printf("PID \t Minor_faults \t Major_faults \t RSS\n");
-  printf("Time \t PID \t VM \t RSS\n");
+  fprintf(fpRaw,"Time \t PID \t VM \t RSS\n");
+  fprintf(fpSummary,"Time \t VM \t RSS\n");
 
   i = 0;
   // loop over entire length of buffer and write -1 after printing out current value
   while(buf[index] != -1){
-    printf("%ld \t\t ", buf[index]);
+
+    // Check if time is diffent than current time
+    if(current_time != buf[index]) {
+ 
+      // Check for initial condition
+      if(sum_rss !=0 && sum_vm != 0) {
+	fprintf(fpSummary,"%ld \t\t ",current_time);
+	fprintf(fpSummary,"%ld \t\t ",sum_vm);
+	fprintf(fpSummary,"%ld\n ",sum_rss);
+      }
+      current_time = buf[index];
+      sum_vm = 0;
+      sum_rss = 0;
+    }
+
+    // Time
+    fprintf(fpRaw,"%ld \t\t ", buf[index]);
     buf[index++] = -1;
     if(index >= BUFD_MAX)
       index = 0;
 
-    printf("%ld \t\t", buf[index]);
+    // PID
+    fprintf(fpRaw,"%ld \t\t", buf[index]);
     buf[index++] = -1;
     if(index >= BUFD_MAX)
       index = 0;
 
-    printf("%ld \t\t", buf[index]);
+    // VM
+    fprintf(fpRaw,"%ld \t\t", buf[index]);
+    // sum VM
+    sum_vm += buf[index];
+    // initialize memory
     buf[index++] = -1;
     if(index >= BUFD_MAX)
       index = 0;
 
-    printf("%ld\n", buf[index]);
+    // RSS
+    fprintf(fpRaw,"%ld\n", buf[index]);
+    // sum VM
+    sum_rss += buf[index];
+    // initialize memory
     buf[index++] = -1;
     if(index >= BUFD_MAX)
       index = 0;
     i++;
   }
-  printf("read %d profiled data\n", i);
+  fprintf(fpRaw,"read %d profiled data\n", i);
 
   // Close the char device
   buf_exit();
+  fclose(fpRaw);
+  fclose(fpSummary);
 }
 
