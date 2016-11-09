@@ -2,6 +2,10 @@
 
 import os
 
+case = 'case_2'
+# case 1 => no active memory pressure with no other options
+# case 2 => active memory pressure with no other options
+
 def massage_summary(inputFile,outputFile):
     # open the input file
     summaryFile = open(inputFile,"r")
@@ -36,9 +40,18 @@ def massage_summary(inputFile,outputFile):
 
 
 # initial case
-os.system('./work 500 R 1 4')
-os.system('./monitor raw_output summary_output')
-massage_summary('summary_output','mod_summary')
+work_output = 'work_' + case
+work_command = './work 1000 R 1 4 > ' + work_output
+print(work_command)
+os.system(work_command)
+raw_file = 'raw_output_' + case
+summary_file = 'summary_output_' + case
+monitor_command = './monitor ' + raw_file + ' ' + summary_file
+print(monitor_command)
+os.system(monitor_command) 
+mod_file = 'mod_summary_' + case
+print(summary_file)
+massage_summary(summary_file,mod_file)
 
 
 

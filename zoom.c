@@ -45,6 +45,12 @@ MODULE_DESCRIPTION("ZOOM Project");
 #define NOTIFY_THRES 20
 // for different forensic reports
 #define STANDARD_REPORT 0
+// for mode state selection
+#define ACTIVE_MEM_PRESS_ON 1
+#define ACTIVE_SELECT_EMP 2
+#define ACTIVE_GRADIENT_STATE 4
+#define ACTIVE_OVERCOUNT_STATE 8
+
 
 // JRF:  Adding this type for memory pressure modeling
 typedef struct {
@@ -126,6 +132,7 @@ static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss);
 static void check_mem_pressure(mem_pressure_t *mem_press);
 static void notify_mem_pressure(mem_pressure_t *mem_press, unsigned long top_pid, unsigned long second_pid);
 static void notify_mem_single_task(mem_pressure_t *mem_press,  struct task_struct *new_task);
+static void set_memory_pressure_mode(int mode);
 
 static const struct file_operations zoom_file_ops = {  
   .owner = THIS_MODULE,
@@ -151,12 +158,12 @@ int __init zoom_init(void)
   int time_speed = HZ;
   
   // turn on/off memory pressure modeling
-  active_mem_pressure = 1;
+  active_mem_pressure = 0;
   // turn on/off selective_emphasis
   active_selective_emphasis = 0;
   // turn on/off gradient state
   active_gradient_state = 0;
-  // turn on/off gradient state
+  // turn on/off overcount state
   active_overcount_renotify = 0;
   // set the reporting type for mmap
   report_type = STANDARD_REPORT;
@@ -332,6 +339,7 @@ static ssize_t zoom_write(struct file *fp, const __user char *buffer, size_t len
   char *send_string;
   int i_length = (int)length;
   int ret;
+  int mode;
 
   send_string = input_buffer;
 
@@ -371,6 +379,15 @@ static ssize_t zoom_write(struct file *fp, const __user char *buffer, size_t len
     pid = get_token_from_proc(send_string,i_length,&shift);
     printk(KERN_INFO "The pid read is %d\n",pid);
     ret = perform_deregister(pid);
+    break;
+    // Define the mode the module should run under
+  case 'M':
+    printk(KERN_INFO "A mode command was received\n");
+    send_string += 2;
+    i_length -= 2;
+    mode = get_token_from_proc(send_string,i_length,&shift);
+    printk(KERN_INFO "The mode read is %d\n",mode);    
+    set_memory_pressure_mode(mode);
     break;
   default:
     printk(KERN_INFO "An unknown command was received\n");
@@ -560,6 +577,44 @@ static int perform_deregister(unsigned int pid) {
     } // end current_num_tasks if
     
   return 0;
+}
+
+// JRF:  This routine sets the state of the memory pressure messaging via the proc file system
+// Note:  There are some illogical combinations.  These won't be checked until a later version.  BEWARE!!!
+void set_memory_pressure_mode(int mode) {
+
+  // Take the mode input and perform bitwise ORs to determine the current state
+  // 1.  Determine mem pressure on or not
+  if(mode | ACTIVE_MEM_PRESS_ON)
+    active_mem_pressure = 1;
+  else {
+    // no further checking needed
+    active_mem_pressure = 0;
+    active_selective_emphasis = 0;
+    active_gradient_state = 0;
+    active_overcount_renotify = 0;
+    return;
+  }
+
+  // 2.  Determine select emphasis on or not
+  if(mode | ACTIVE_SELECT_EMP)
+    active_selective_emphasis = 1;
+  else
+    active_selective_emphasis = 0;
+
+  // 3.  Determine gradient state on or not
+  if(mode | ACTIVE_GRADIENT_STATE)
+    active_gradient_state = 1;
+  else
+    active_gradient_state = 0;
+
+  // 4.  Determine gradient state on or not
+  if(mode | ACTIVE_OVERCOUNT_STATE)
+    active_overcount_renotify = 1;
+  else
+    active_overcount_renotify = 0;
+  
+  return;
 }
 
 // This function performs the following:
@@ -754,7 +809,6 @@ static void calc_mem_pressure(mem_pressure_t *mem_press, unsigned long rss) {
 // JRF:  For memory pressure modeling.  This routine determines the mem pressure state and
 // also determines if a notification should occur.
 // Note:  Currently this is based on rss, but can be made more general later
-//static void check_mem_pressure(mem_pressure_t *mem_press, unsigned int pid) {
 static void check_mem_pressure(mem_pressure_t *mem_press) {  
 
   static int notify_count = 0;

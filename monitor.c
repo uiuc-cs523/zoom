@@ -12,7 +12,7 @@
 
 #define NPAGES (128)   // The size of profiler buffer (Unit: memory page)
 #define BUFD_MAX 48000 // The max number of profiled samples stored in the profiler buffer
-#define MAX_FILESIZE 80
+#define MAX_FILESIZE 200
 
 static int buf_fd = -1;
 static int buf_len;
@@ -75,8 +75,10 @@ int main(int argc, char* argv[])
     copy_length = MAX_FILESIZE;
   strncpy(raw_results,argv[1],copy_length);
 
+  //printf("The raw results file is %s from %s\n",raw_results,argv[1]);
+
   // Open file for raw results
-  if((fpRaw = fopen(raw_results,"w+")) == NULL) {
+  if((fpRaw = fopen(argv[1],"w+")) == NULL) {
     printf("Could not open file %s\n",raw_results);
     return -1;
   }
@@ -88,8 +90,10 @@ int main(int argc, char* argv[])
     copy_length = MAX_FILESIZE;
   strncpy(summary_results,argv[2],copy_length);
 
+  //printf("The summary results file is %s from %s\n",summary_results,argv[2]);
+
   // Open file for raw results
-  if((fpSummary = fopen(summary_results,"w+")) == NULL) {
+  if((fpSummary = fopen(argv[2],"w+")) == NULL) {
     fclose(fpRaw);
     printf("Could not open file %s\n",summary_results);
     return -1;
