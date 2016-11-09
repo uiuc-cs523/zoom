@@ -122,7 +122,7 @@ int main(int argc, char* argv[])
       if(sum_rss !=0 && sum_vm != 0) {
 	fprintf(fpSummary,"%ld \t\t ",current_time);
 	fprintf(fpSummary,"%ld \t\t ",sum_vm);
-	fprintf(fpSummary,"%ld\n ",sum_rss);
+	fprintf(fpSummary,"%ld\n",sum_rss);
       }
       current_time = buf[index];
       sum_vm = 0;

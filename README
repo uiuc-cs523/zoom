@@ -159,4 +159,11 @@ Requirement:  Improve monitoring program
 1.  Added two arguments to monitoring program to write output directly to file.  One is raw the other is results.
 2.  Changed program to only read good data and ignore garbage.
 3.  Summary file outputs the total VM and RSS.
-
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 14
+------------------------------------------------------
+Requirement:  Implement automated testing
+------------------------------------------------------
+1.  Created auto_test.py to set up runs at scripting level.  Runs work, performs data download and will massage output.
