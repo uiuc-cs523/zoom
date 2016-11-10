@@ -6,6 +6,25 @@ case = 'case_2'
 # case 1 => no active memory pressure with no other options
 # case 2 => active memory pressure with no other options
 
+def activate_memory_pressure(select_emp,gradient,over_count):
+    proc_file = open("/proc/zoom/status","w")
+    sum = 0
+    if select_emp == 1:
+        sum += 2
+    if gradient == 1:
+        sum += 4
+    if over_count == 1:
+        sum += 8
+    write_val = 1 + sum
+    write_string = "M " + str(write_val)
+    proc_file.write(write_string)
+    proc_file.close()
+
+def deacticate_memory_pressure():
+    proc_file = open("/proc/zoom/status","w")
+    proc_file.write("M 0")
+    proc_file.close()
+
 def massage_summary(inputFile,outputFile):
     # open the input file
     summaryFile = open(inputFile,"r")
@@ -40,6 +59,8 @@ def massage_summary(inputFile,outputFile):
 
 
 # initial case
+#deacticate_memory_pressure()
+activate_memory_pressure(0,0,0)
 work_output = 'work_' + case
 work_command = './work 1000 R 1 4 > ' + work_output
 print(work_command)

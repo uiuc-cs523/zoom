@@ -170,3 +170,15 @@ Requirement:  Implement automated testing
 2.  Fixed a bug in monitor for opening files.  (I hate c-strings)
 3.  Improved auto test to set case in a single line
 4.  Modified zoom to be able to set the memory pressure handling mode by a proc file write
+------------------------------------------------------
+------------------------------------------------------
+------------------------------------------------------
+Updates made to version 15
+------------------------------------------------------
+Requirement:  Perform significant testing and debugging
+------------------------------------------------------
+1.  Added output to /var/log/messages for selection of memory pressure mode.
+2.  Fixed a bug with memory pressure handling selection in zoom.
+3.  (TODO) figure out why work spawns from start for all children
+4.  Fixed a bug in reporting rss in zoom.
+5.  Added functionality in the auto_test.py to modify the mem pressure handling state via functions

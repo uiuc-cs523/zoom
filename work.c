@@ -21,7 +21,7 @@
 #define LOW_GRADIENT 0
 #define HI_GRADIENT 1
 #define TOP_OFFENDER 10
-
+#define DEBUG 1
 
 char *buffer[1024];
 void sigusr_handler(int sig);
@@ -213,9 +213,12 @@ int main(int argc, char* argv[])
   struct timeval outputTime;
   struct timeval initTime;
   unsigned long initSeconds,initMicroseconds;
+  pid_t temp_pid;
   
+  temp_pid = syscall(__NR_gettid);
+  printf("\nstart of program here with %u\n",temp_pid);
 
-  // 
+  // initialize time
   gettimeofday(&initTime,NULL);
 
   // initialize the pressure level and gradient level
@@ -272,9 +275,13 @@ int main(int argc, char* argv[])
       return -1;
     }
   }
+  // close the file since it should be parsed by now
+  fclose(fp);
 
+#ifdef DEBUG
   // print out children.properties file here for debug
   outputChildrenSettings(numLines);
+#endif
 
   // JRF:  Loop over num children and spawn a new child each time
   child_num = 0;
@@ -284,10 +291,12 @@ int main(int argc, char* argv[])
     // check for child process
     if(!ret) {
       // set as a child and break out of loop
+      //printf("Child %d starts here\n",ret);
+      nchildren = 0;
       parent = 0;
       break;
     }
-    //sleep(3);
+    printf("Spawned child %d\n",ret);
     nchildren--;
     children[child_num] = ret;
     child_num++;
@@ -380,7 +389,9 @@ int main(int argc, char* argv[])
 #endif
       expand_memory(child_num);
     }
-     printf("[%d] %d iteration\n", mypid, k);
+#ifdef DEBUG    
+    printf("[%d] %d iteration in pressure state =  %d\n", mypid, k,pressure_level);
+#endif
      if(!locality){
        for(j=0; j<naccess; j++){
          rand_access();

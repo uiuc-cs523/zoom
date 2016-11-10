@@ -585,34 +585,49 @@ void set_memory_pressure_mode(int mode) {
 
   // Take the mode input and perform bitwise ORs to determine the current state
   // 1.  Determine mem pressure on or not
-  if(mode | ACTIVE_MEM_PRESS_ON)
+  if(mode & ACTIVE_MEM_PRESS_ON) {
     active_mem_pressure = 1;
+    printk(KERN_INFO "Active Mem Pressure:  ON\n");
+  }
   else {
     // no further checking needed
     active_mem_pressure = 0;
     active_selective_emphasis = 0;
     active_gradient_state = 0;
     active_overcount_renotify = 0;
+    printk(KERN_INFO "Active Mem Pressure:  OFF\n");
     return;
   }
 
   // 2.  Determine select emphasis on or not
-  if(mode | ACTIVE_SELECT_EMP)
+  if(mode & ACTIVE_SELECT_EMP) {
     active_selective_emphasis = 1;
-  else
+    printk(KERN_INFO "Selective Emphasis:  ON\n");
+  }
+  else {
     active_selective_emphasis = 0;
+    printk(KERN_INFO "Selective Emphasis:  OFF\n");
+  }
 
   // 3.  Determine gradient state on or not
-  if(mode | ACTIVE_GRADIENT_STATE)
+  if(mode & ACTIVE_GRADIENT_STATE) {
     active_gradient_state = 1;
-  else
+    printk(KERN_INFO "Acive Gradient State:  ON\n");
+  }
+  else {
     active_gradient_state = 0;
+    printk(KERN_INFO "Active Gradient State:  OFF\n");
+  }
 
   // 4.  Determine gradient state on or not
-  if(mode | ACTIVE_OVERCOUNT_STATE)
+  if(mode & ACTIVE_OVERCOUNT_STATE) {
     active_overcount_renotify = 1;
-  else
+    printk(KERN_INFO "Active Overcount:  ON\n");
+  }
+  else {
     active_overcount_renotify = 0;
+    printk(KERN_INFO "Active Overcount:  OFF\n");
+  }
   
   return;
 }
@@ -658,7 +673,7 @@ static void zoom_wq_function(struct work_struct *work) {
     
     // Sum up the rss here
     tot_rss += rss;
-    tot_reg_vm += tot_reg_vm;
+    tot_reg_vm += total_vm;
 
     // time
     buffer[index++] = jiffies;
@@ -667,7 +682,7 @@ static void zoom_wq_function(struct work_struct *work) {
     // Copy major fault count to queue
     buffer[index++] = total_vm;
     // Copy cpu utilization to queue
-    buffer[index++] = tot_rss; 
+    buffer[index++] = rss; 
 
     if(rss > top_user_rss) {
       // check if second user is empty, else overwrite with current top
