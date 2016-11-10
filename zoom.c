@@ -111,6 +111,8 @@ int active_gradient_state;
 int active_overcount_renotify;
 int active_mem_pressure;
 int report_type;
+// JRF:  For making memory pressure thresholds modifiable
+int mem_thres_med, mem_thres_hi, mem_thres_emer;
 
 static int zoom_show(struct seq_file *m, void *v);
 static int zoom_open(struct inode *node, struct file *fp);
@@ -167,6 +169,11 @@ int __init zoom_init(void)
   active_overcount_renotify = 0;
   // set the reporting type for mmap
   report_type = STANDARD_REPORT;
+
+  // Set default memory pressure thresholds
+  mem_thres_med = RSS_THRES_MED;
+  mem_thres_hi = RSS_THRES_HI;
+  mem_thres_emer = RSS_THRES_EMER;
 
    #ifdef DEBUG
    printk(KERN_ALERT "ZOOM MODULE LOADING\n");
@@ -388,6 +395,24 @@ static ssize_t zoom_write(struct file *fp, const __user char *buffer, size_t len
     mode = get_token_from_proc(send_string,i_length,&shift);
     printk(KERN_INFO "The mode read is %d\n",mode);    
     set_memory_pressure_mode(mode);
+    break;
+    // Define changing the memory pressure levels
+    // Usage:  L,<med_press>,<hi_press>,<emer_press>
+  case 'L':
+    printk(KERN_INFO "A mem pressure level command was received\n");
+    send_string += 2;
+    i_length -= 2;
+    //printk(KERN_INFO "Get 1st token\n");
+    mem_thres_med = get_token_from_proc(send_string,i_length,&shift);
+    send_string += shift+1;
+    i_length -= shift+1;
+    //printk(KERN_INFO "Get 2nd token with shift = %d\n",shift);
+    mem_thres_hi = get_token_from_proc(send_string,i_length,&shift);
+    send_string += shift+1;
+    i_length -= shift+1;
+    //printk(KERN_INFO "Get 3rd token with shift = %d\n",shift); 
+    mem_thres_emer = get_token_from_proc(send_string,i_length,&shift);
+    printk(KERN_INFO "Med press = %d, Hi press = %d, Emer press = %d\n",mem_thres_med,mem_thres_hi,mem_thres_emer); 
     break;
   default:
     printk(KERN_INFO "An unknown command was received\n");
@@ -834,11 +859,11 @@ static void check_mem_pressure(mem_pressure_t *mem_press) {
     mem_press->gradient_state = 0;
 
   // Reset notify_count 
-  if(mem_press->tot_rss < RSS_THRES_MED)
+  if(mem_press->tot_rss < mem_thres_med)
     notify_count = 0;
 
   // Check for low pressure state change
-  if(mem_press->tot_rss < RSS_THRES_MED && mem_press->pressure_state != LOW_PRESSURE) {
+  if(mem_press->tot_rss < mem_thres_med && mem_press->pressure_state != LOW_PRESSURE) {
     // Set state to medium pressure
     mem_press->pressure_state = LOW_PRESSURE;
     mem_press->require_notify = 1;
@@ -846,7 +871,7 @@ static void check_mem_pressure(mem_pressure_t *mem_press) {
   }
 
   // Check for med pressure state change
-  if(mem_press->tot_rss > RSS_THRES_MED && mem_press->tot_rss < RSS_THRES_HI && mem_press->pressure_state != MED_PRESSURE) {
+  if(mem_press->tot_rss > mem_thres_med && mem_press->tot_rss < mem_thres_hi && mem_press->pressure_state != MED_PRESSURE) {
     // Set state to medium pressure
     mem_press->pressure_state = MED_PRESSURE;
     mem_press->require_notify = 1;
@@ -854,7 +879,7 @@ static void check_mem_pressure(mem_pressure_t *mem_press) {
   }
 
   // Check for med pressure state change
-  if(mem_press->tot_rss > RSS_THRES_HI && mem_press->tot_rss < RSS_THRES_EMER && mem_press->pressure_state != HI_PRESSURE) {
+  if(mem_press->tot_rss > mem_thres_hi && mem_press->tot_rss < mem_thres_emer && mem_press->pressure_state != HI_PRESSURE) {
     // Set state to high pressure
     mem_press->pressure_state = HI_PRESSURE;
     mem_press->require_notify = 1;
@@ -862,7 +887,7 @@ static void check_mem_pressure(mem_pressure_t *mem_press) {
   }
  
   // Check for low pressure state change
-  if(mem_press->tot_rss > RSS_THRES_EMER && mem_press->pressure_state != EMER_PRESSURE) {
+  if(mem_press->tot_rss > mem_thres_emer && mem_press->pressure_state != EMER_PRESSURE) {
     // Set state to medium pressure
     mem_press->pressure_state = EMER_PRESSURE;
     mem_press->require_notify = 1;

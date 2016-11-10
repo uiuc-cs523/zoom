@@ -2,9 +2,12 @@
 
 import os
 
+JIFFIES = 250.0
+
 case = 'case_2'
 # case 1 => no active memory pressure with no other options
 # case 2 => active memory pressure with no other options
+# case 3 => active memory pressure with selective emphasis 
 
 def activate_memory_pressure(select_emp,gradient,over_count):
     proc_file = open("/proc/zoom/status","w")
@@ -39,7 +42,7 @@ def massage_summary(inputFile,outputFile):
     #trim the input file of space
     summary = summary.lstrip()
     # get the initial time
-    initTime = int(summary[0:10])
+    initTime = float(summary[0:10])
     while summary:
         # discontinue if end of the file
         if len(summary) < 10:
@@ -47,7 +50,7 @@ def massage_summary(inputFile,outputFile):
         #trim the input file of space
         summary = summary.lstrip()
         # Compute the current time\
-        time = str(int(summary[0:10]) - initTime)
+        time = str((float(summary[0:10]) - initTime)/JIFFIES)
         # modify the summary line
         summary = time + summary[10:]
         # write the new summary line to output
@@ -57,10 +60,11 @@ def massage_summary(inputFile,outputFile):
     summaryFile.close()
     newSummary.close()
 
-
-# initial case
-#deacticate_memory_pressure()
-activate_memory_pressure(0,0,0)
+# begin program here
+if(case == 'case_1'):
+    deacticate_memory_pressure()
+if(case == 'case_2'):
+    activate_memory_pressure(0,0,0)
 work_output = 'work_' + case
 work_command = './work 1000 R 1 4 > ' + work_output
 print(work_command)

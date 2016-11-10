@@ -182,3 +182,4 @@ Requirement:  Perform significant testing and debugging
 3.  (TODO) figure out why work spawns from start for all children
 4.  Fixed a bug in reporting rss in zoom.
 5.  Added functionality in the auto_test.py to modify the mem pressure handling state via functions
+6.  Medium, high and emergency pressure all can be specified via proc file system in zoom
