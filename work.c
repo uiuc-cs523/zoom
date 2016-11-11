@@ -31,6 +31,7 @@ int initDelay[100]; // in milliseconds
 int sleepBetweenIters[100]; // in milliseconds
 int adminRelief[100];
 int percentRecover[100];
+int memorySize[100];
 int prime_offender;
 
 
@@ -108,7 +109,7 @@ void relieve_memory() {
   int i;
 
   if(prime_offender == 1) {
-    memory_usage = msize * (10 - (pressure_level + 1)) / 10;
+    memory_usage = msize * (10 - (pressure_level + 2)) / 10;
     prime_offender = 0;
     printf("Prime offender will give til it hurts\n");
   }
@@ -142,7 +143,7 @@ void expand_memory(int child_num) {
 }
 
 
-// This function emualtes a random memory access
+// This function emulates a random memory access
 void rand_access()
 {
   int target;
@@ -172,7 +173,7 @@ int local_access(int addr)
 int parseChildrenFile(FILE *fp, int numLines) {
   int i;
   for(i=0;i < numLines;i++) {
-    if(fscanf(fp,"%d %d %d %d",&initDelay[i],&sleepBetweenIters[i],&adminRelief[i],&percentRecover[i]) == EOF)
+    if(fscanf(fp,"%d %d %d %d %d",&initDelay[i],&sleepBetweenIters[i],&adminRelief[i],&percentRecover[i],&memorySize[i]) == EOF)
       return -1;   
   }
   return 0;
@@ -185,9 +186,9 @@ void outputChildrenSettings(int numLines) {
   printf("number children: %d\n",numLines);
   for(i=0;i < numLines;i++)
     if(adminRelief[i] == 1)
-      printf("line %d:  delay = %d, sleep = %d, percentRecovery = %d and apply relief\n",i,initDelay[i],sleepBetweenIters[i],percentRecover[i]);
+      printf("line %d:  delay = %d, sleep = %d, percentRecovery = %d, memorySize = %d and apply relief\n",i,initDelay[i],sleepBetweenIters[i],percentRecover[i],memorySize[i]);
     else
-      printf("line %d:  delay = %d, sleep = %d, percentRecovery = %d and without relief\n",i,initDelay[i],sleepBetweenIters[i],percentRecover[i]);     
+      printf("line %d:  delay = %d, sleep = %d, percentRecovery = %d, memorySize = %d and without relief\n",i,initDelay[i],sleepBetweenIters[i],percentRecover[i],memorySize[i]);     
   printf("---------------------------------\n");
 }
 
@@ -294,6 +295,14 @@ int main(int argc, char* argv[])
       //printf("Child %d starts here\n",ret);
       nchildren = 0;
       parent = 0;
+      // assign child memory size by file
+      msize = memorySize[child_num];
+      msize_orig = msize;
+      // Cap msize between 1 and 1024
+      if(msize > 1024)
+	msize = 1024;
+      if(msize < 1)
+	msize = 1;
       break;
     }
     printf("Spawned child %d\n",ret);
@@ -366,10 +375,6 @@ int main(int argc, char* argv[])
     }
   }
 
-
-
-
-
   // 4. Access allocated memory blocks using the specified access policy
   int addr = 0;
   for (k=0;k<N_ITERATION; k++){
@@ -410,6 +415,8 @@ int main(int argc, char* argv[])
        }
      }
      sleep(1);
+     printf("Sleep finished for process %u",mypid); 
+     
   }
   
   // 5. Free memory blocks
@@ -417,13 +424,23 @@ int main(int argc, char* argv[])
     free(buffer[i]);
   }
 
+  if(parent)
+    sleep(15);
+
   // 6. Unregister itself to stop the profiling
   sprintf(cmd, "echo 'U %u'>//proc/zoom/status", mypid);
   system(cmd);
 
   // if parent, wait for all the children to prevent zombies
-  for(i=0;i<child_num;i++)
-    waitpid(children[i],&status,0);
-  
+    if(parent) {
+      for(i=0;i<child_num;i++)
+	waitpid(children[i],&status,0);
+      printf("Parent done\n");
+      return 0;
+    }
+    else {
+      printf("Child done\n");
+      return 0;
+    }
 }
 

@@ -4,7 +4,8 @@ import os
 
 JIFFIES = 250.0
 
-case = 'case_2'
+case = 'case_1'
+number_processes = 8
 # case 1 => no active memory pressure with no other options
 # case 2 => active memory pressure with no other options
 # case 3 => active memory pressure with selective emphasis 
@@ -63,10 +64,12 @@ def massage_summary(inputFile,outputFile):
 # begin program here
 if(case == 'case_1'):
     deacticate_memory_pressure()
+    print('no memory pressure handling')
 if(case == 'case_2'):
     activate_memory_pressure(0,0,0)
-work_output = 'work_' + case
-work_command = './work 1000 R 1 4 > ' + work_output
+    print('simple memory pressure handling')
+work_output = str(number_processes) + ' > work_' + case
+work_command = './work 500 R 1 ' + work_output
 print(work_command)
 os.system(work_command)
 raw_file = 'raw_output_' + case

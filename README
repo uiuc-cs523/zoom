@@ -183,3 +183,6 @@ Requirement:  Perform significant testing and debugging
 4.  Fixed a bug in reporting rss in zoom.
 5.  Added functionality in the auto_test.py to modify the mem pressure handling state via functions
 6.  Medium, high and emergency pressure all can be specified via proc file system in zoom
+7.  Added memory size specification in children.properties file (work.c reads and handles properly)
+8.  Worked around an issue with an extra amount of sleep in work.  Need to figure out more elegant solution later.
+9.  (TODO)  Need to solve mmap wrapping issue.  (Probably an issue with the monitor program).
