@@ -4,11 +4,13 @@ import os
 
 JIFFIES = 250.0
 
-case = 'case_1'
+case = 'case_2'
 number_processes = 8
 # case 1 => no active memory pressure with no other options
 # case 2 => active memory pressure with no other options
-# case 3 => active memory pressure with selective emphasis 
+# case 3 => active memory pressure with selective emphasis
+# case 4 => active memory pressure with gradient handling
+# case 5 => active memory pressure with overcount renotification 
 
 def activate_memory_pressure(select_emp,gradient,over_count):
     proc_file = open("/proc/zoom/status","w")
@@ -68,8 +70,17 @@ if(case == 'case_1'):
 if(case == 'case_2'):
     activate_memory_pressure(0,0,0)
     print('simple memory pressure handling')
+if(case == 'case_3'):
+    activate_memory_pressure(1,0,0)
+    print(' memory pressure handling with select emp')
+if(case == 'case_4'):
+    activate_memory_pressure(0,1,0)
+    print(' memory pressure handling with gradient handling')
+if(case == 'case_5'):
+    activate_memory_pressure(0,0,1)
+    print(' memory pressure handling with overcount renotification')       
 work_output = str(number_processes) + ' > work_' + case
-work_command = './work 500 R 1 ' + work_output
+work_command = './work 500 R 10 ' + work_output
 print(work_command)
 os.system(work_command)
 raw_file = 'raw_output_' + case

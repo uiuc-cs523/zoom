@@ -13,6 +13,10 @@
 #include <string.h>
 #include <time.h>
 
+#define TRUE 1
+#define FALSE 0
+#define PRIME_REDUCT 2
+#define MAX_ENTRIES 40
 #define N_ITERATION 20
 #define LOW_PRESSURE 0
 #define MED_PRESSURE 1
@@ -27,12 +31,14 @@ char *buffer[1024];
 void sigusr_handler(int sig);
 //struct sigaction sa;
 pid_t mypid;
-int initDelay[100]; // in milliseconds
-int sleepBetweenIters[100]; // in milliseconds
-int adminRelief[100];
-int percentRecover[100];
-int memorySize[100];
+int initDelay[MAX_ENTRIES]; // in milliseconds
+int sleepBetweenIters[MAX_ENTRIES]; // in milliseconds
+int adminRelief[MAX_ENTRIES];
+int percentRecover[MAX_ENTRIES];
+int memorySize[MAX_ENTRIES];
+int dieOnNote[MAX_ENTRIES];
 int prime_offender;
+int renotify;
 
 
 // JRF:  Added msize_orig and pressure_level to store original mem size and current level of pressure
@@ -43,6 +49,7 @@ int gradient_level;
 // JRF:  Added for signal handling
 static void hdl_mem_pressure_not (int sig, siginfo_t *siginfo, void *context)
 {
+  return;
   int pressure_state = siginfo->si_errno;
   if(pressure_state > TOP_OFFENDER) {
     prime_offender = 1; 
@@ -53,6 +60,7 @@ static void hdl_mem_pressure_not (int sig, siginfo_t *siginfo, void *context)
 #ifdef DEBUG
     printf("SIGUSR1 received for pid %u with low pressure\n",mypid);
 #endif
+    renotify = FALSE;
     pressure_level = LOW_PRESSURE;
     gradient_level = LOW_GRADIENT;
   }
@@ -60,6 +68,9 @@ static void hdl_mem_pressure_not (int sig, siginfo_t *siginfo, void *context)
 #ifdef DEBUG
     printf("SIGUSR1 received for pid %u with medium pressure and low gradient\n",mypid);
 #endif
+    // check for a renotify state
+    if(pressure_level == MED_PRESSURE)
+      renotify = TRUE;
     pressure_level = MED_PRESSURE;
     gradient_level = LOW_GRADIENT;    
   }
@@ -67,6 +78,9 @@ static void hdl_mem_pressure_not (int sig, siginfo_t *siginfo, void *context)
 #ifdef DEBUG
     printf("SIGUSR1 received for pid %u with medium pressure and high gradient\n",mypid);
 #endif
+    // check for a renotify state
+    if(pressure_level == MED_PRESSURE)
+      renotify = TRUE;
     pressure_level = MED_PRESSURE;
     gradient_level = HI_GRADIENT; 
   }
@@ -74,6 +88,9 @@ static void hdl_mem_pressure_not (int sig, siginfo_t *siginfo, void *context)
 #ifdef DEBUG
     printf("SIGUSR1 received for pid %u with high pressure and low gradient\n",mypid);
 #endif
+    // check for a renotify state
+    if(pressure_level == HI_PRESSURE)
+      renotify = TRUE;
     pressure_level = HI_PRESSURE;
     gradient_level = LOW_GRADIENT;
   }
@@ -81,6 +98,9 @@ static void hdl_mem_pressure_not (int sig, siginfo_t *siginfo, void *context)
 #ifdef DEBUG
     printf("SIGUSR1 received for pid %u with high pressure and high gradient\n",mypid);
 #endif
+    // check for a renotify state
+    if(pressure_level == HI_PRESSURE)
+      renotify = TRUE;
     pressure_level = HI_PRESSURE;
     gradient_level = HI_GRADIENT;
   }
@@ -88,6 +108,9 @@ static void hdl_mem_pressure_not (int sig, siginfo_t *siginfo, void *context)
 #ifdef DEBUG
     printf("SIGUSR1 received for pid %u with emergency pressure and low gradient\n",mypid);
 #endif
+    // check for a renotify state
+    if(pressure_level == EMER_PRESSURE)
+      renotify = TRUE;
     pressure_level = EMER_PRESSURE;
     gradient_level = LOW_GRADIENT;
   }
@@ -95,6 +118,9 @@ static void hdl_mem_pressure_not (int sig, siginfo_t *siginfo, void *context)
 #ifdef DEBUG
     printf("SIGUSR1 received for pid %u with emergency pressure and high gradient\n",mypid); 
 #endif
+    // check for a renotify state
+    if(pressure_level == EMER_PRESSURE)
+      renotify = TRUE;
     pressure_level = EMER_PRESSURE;
     gradient_level = HI_GRADIENT;
   }
@@ -109,7 +135,7 @@ void relieve_memory() {
   int i;
 
   if(prime_offender == 1) {
-    memory_usage = msize * (10 - (pressure_level + 2)) / 10;
+    memory_usage = msize * (10 - (pressure_level + PRIME_REDUCT)) / 10;
     prime_offender = 0;
     printf("Prime offender will give til it hurts\n");
   }
@@ -173,7 +199,7 @@ int local_access(int addr)
 int parseChildrenFile(FILE *fp, int numLines) {
   int i;
   for(i=0;i < numLines;i++) {
-    if(fscanf(fp,"%d %d %d %d %d",&initDelay[i],&sleepBetweenIters[i],&adminRelief[i],&percentRecover[i],&memorySize[i]) == EOF)
+    if(fscanf(fp,"%d %d %d %d %d %d",&initDelay[i],&sleepBetweenIters[i],&adminRelief[i],&percentRecover[i],&memorySize[i],&dieOnNote[i]) == EOF)
       return -1;   
   }
   return 0;
@@ -186,10 +212,72 @@ void outputChildrenSettings(int numLines) {
   printf("number children: %d\n",numLines);
   for(i=0;i < numLines;i++)
     if(adminRelief[i] == 1)
-      printf("line %d:  delay = %d, sleep = %d, percentRecovery = %d, memorySize = %d and apply relief\n",i,initDelay[i],sleepBetweenIters[i],percentRecover[i],memorySize[i]);
+      printf("line %d:  delay = %d, sleep = %d, percentRecovery = %d, memorySize = %d, dieOnNote = %d and apply relief\n",i,initDelay[i],sleepBetweenIters[i],percentRecover[i],memorySize[i],dieOnNote[i]);
     else
-      printf("line %d:  delay = %d, sleep = %d, percentRecovery = %d, memorySize = %d and without relief\n",i,initDelay[i],sleepBetweenIters[i],percentRecover[i],memorySize[i]);     
+      printf("line %d:  delay = %d, sleep = %d, percentRecovery = %d, memorySize = %d, dieOnNote = %d and without relief\n",i,initDelay[i],sleepBetweenIters[i],percentRecover[i],memorySize[i],dieOnNote[i]);     
   printf("---------------------------------\n");
+}
+
+void memory_access(int naccess, int locality, int *addr) {
+  
+  int j;
+
+  if(!locality){
+    for(j=0; j<naccess; j++){
+      rand_access();
+    }
+  }
+  else{
+    for(j=0; j<naccess; j++){
+      //int locality = rand() % 10;
+      int locality = 0;
+      if(locality > -2 && locality < 2){ /* random access */
+	rand_access();
+      }
+      else{ /* local access */
+	*addr = local_access(*addr);
+      }
+    }
+  }
+}
+
+void perform_sleep(struct timeval *currentTime, struct timeval *previousTime, int seconds, int milliseconds) {
+
+  int sleepSeconds, sleepMicros;
+  struct timespec syncDelay;
+
+  // TODO:  Sleep in intervals of two seconds for each iteration
+  // get current time
+  gettimeofday(currentTime,NULL);
+  // compare to previous time and find out required sleep time for two second intervals
+  printf("seconds = %d, previousTime_sec = %lu, currentTime_sec = %lu\n",seconds,previousTime->tv_sec,currentTime->tv_sec);
+  printf("milliseconds = %d, previousTime_usec = %lu, currentTime_usec = %lu\n",milliseconds,previousTime->tv_usec,currentTime->tv_usec);
+  sleepSeconds =  seconds + previousTime->tv_sec - currentTime->tv_sec;
+  sleepMicros = (milliseconds*1000) + previousTime->tv_usec - currentTime->tv_usec;
+  printf("Raw calc:   %d seconds and %d micros\n",sleepSeconds,sleepMicros);
+  // don't let microseconds be negative
+  while(sleepMicros < 0) {
+    sleepMicros += 1000000;
+    sleepSeconds -= 1;
+  }
+
+  printf("The program will sleep for %d seconds and %d micros\n",sleepSeconds,sleepMicros);
+  syncDelay.tv_sec = sleepSeconds;
+  syncDelay.tv_nsec = 1000 * sleepMicros;
+  // check for negative sleep amount
+  if(sleepSeconds < 0) {
+    printf("Negative sleep amount, finishing program\n");
+    //break;
+  }
+  else
+    // sleep required interval
+    nanosleep(&syncDelay,NULL);
+  // save current time as previous time (perform this before the sleep!!)
+  gettimeofday(previousTime,NULL);
+  
+  //sleep(1);
+  //printf("Sleep finished for process %u\n",mypid); 
+
 }
 
 int main(int argc, char* argv[])
@@ -200,7 +288,7 @@ int main(int argc, char* argv[])
   int locality;
   int naccess;
   int nchildren;
-  pid_t children[100];
+  pid_t children[MAX_ENTRIES];
   pid_t ret;
   int child_num;
   int parent;
@@ -210,12 +298,18 @@ int main(int argc, char* argv[])
   int numLines = 0;
   struct timespec initialDelay;
   struct timespec iterationDelay;
+  struct timespec syncDelay;
   int seconds, milliseconds;
   struct timeval outputTime;
   struct timeval initTime;
+  struct timeval previousTime, currentTime;
   unsigned long initSeconds,initMicroseconds;
   pid_t temp_pid;
+  int sleepSeconds, sleepMicros;
   
+  // initialize the renotify variable
+  renotify = FALSE;
+
   temp_pid = syscall(__NR_gettid);
   printf("\nstart of program here with %u\n",temp_pid);
 
@@ -223,8 +317,8 @@ int main(int argc, char* argv[])
   gettimeofday(&initTime,NULL);
 
   // initialize the pressure level and gradient level
-  pressure_level = 0;
-  gradient_level = 0;
+  pressure_level = LOW_PRESSURE;
+  gradient_level = LOW_GRADIENT;
 
   if(argc<5){
     // JRF:  Adding new argument for number of children
@@ -249,7 +343,7 @@ int main(int argc, char* argv[])
   }
 
   nchildren = atoi(argv[4]);
-  if(nchildren < 0 || nchildren > 100) {
+  if(nchildren < 0 || nchildren > MAX_ENTRIES) {
     printf("number children needs to be greater than zero and less than 101\n");
     return -1;
   }
@@ -265,8 +359,8 @@ int main(int argc, char* argv[])
     }
     // Read the first line of the file
     fscanf(fp,"%d",&numLines);
-    // Limit the number of lines to 100
-    if(numLines > 100 || numLines < 0) {
+    // Limit the number of lines to MAX_ENTRIES
+    if(numLines > MAX_ENTRIES || numLines < 0) {
       printf("Error:  numLines in children.properties should be greater than zero and less than 101\n");
       return -1;
     }
@@ -363,8 +457,9 @@ int main(int argc, char* argv[])
   initMicroseconds =  outputTime.tv_usec - initTime.tv_usec;
   printf("Postsleep:  current time of %lu seconds and %lu microseconds\n",initSeconds,initMicroseconds);
 #endif
+
   // 3. Allocate memory blocks
-    for(i=0; i<msize; i++){
+  for(i=0; i<msize; i++){
     buffer[i] = malloc(1024*1024);
     // if allocation fails, unwind and dealloc as you go
     if(buffer[i] == NULL){
@@ -375,63 +470,63 @@ int main(int argc, char* argv[])
     }
   }
 
-  // 4. Access allocated memory blocks using the specified access policy
-  int addr = 0;
-  for (k=0;k<N_ITERATION; k++){
-    // JRF:  Add this here to perform iteration by iteration delay
-    nanosleep(&iterationDelay,NULL);    
-    // JRF:  Add this check for memory pressure relief
-    if(pressure_level != 0 && adminRelief[child_num]) {
+    // get current time
+    gettimeofday(&previousTime,NULL);
+
+    // 4. Access allocated memory blocks using the specified access policy
+    int addr = 0;
+    for (k=0;k<N_ITERATION; k++){
+      
+      // JRF:  Check for a renotification
+      if(renotify == TRUE) {
+	printf("%u has been notified more than once\n",mypid);
+	renotify == FALSE;
+	if(pressure_level == HI_PRESSURE || pressure_level == EMER_PRESSURE)
+	  if(dieOnNote[child_num] == 1) {
+	    printf("Killing process for renotification\n");
+	    break;
+	  }
+      }
+
+      // JRF:  Add this check for memory pressure relief
+      if(pressure_level != 0 && adminRelief[child_num]) {
 #ifdef DEBUG
-      printf("Relief on its way, new msize = %d\n",msize);
+	printf("Relief on its way, new msize = %d\n",msize);
 #endif
-      relieve_memory();
-    }
-    // JRF:  Add this check for memory expansion if pressure is relieved
-    if(pressure_level == 0 && msize < msize_orig) {
+	relieve_memory();
+      }
+      // JRF:  Add this check for memory expansion if pressure is relieved
+      if(pressure_level == 0 && msize < msize_orig) {
 #ifdef DEBUG
-      printf("Expand a might bit, new msize = %d\n",msize);
+	printf("Expand a might bit, new msize = %d\n",msize);
 #endif
-      expand_memory(child_num);
-    }
+	expand_memory(child_num);
+      }
 #ifdef DEBUG    
-    printf("[%d] %d iteration in pressure state =  %d\n", mypid, k,pressure_level);
+      printf("[%d] %d iteration in pressure state =  %d\n", mypid, k,pressure_level);
 #endif
-     if(!locality){
-       for(j=0; j<naccess; j++){
-         rand_access();
-       }
-     }
-     else{
-       for(j=0; j<naccess; j++){
-         //int locality = rand() % 10;
-	 int locality = 0;
-         if(locality > -2 && locality < 2){ /* random access */
-           rand_access();
-         }
-         else{ /* local access */
-           addr = local_access(addr);
-	 }
-       }
-     }
-     sleep(1);
-     printf("Sleep finished for process %u",mypid); 
-     
-  }
+      // Check for high gradient - If high, stop accessing memory for now
+      if(gradient_level != HI_GRADIENT) {
+	// perform memory access here
+	memory_access(naccess, locality, &addr);
+      }
+      // perform iteration sleep here
+      perform_sleep(&currentTime, &previousTime, seconds, milliseconds);      
+    }
   
-  // 5. Free memory blocks
-  for(i=0; i<msize; i++){
-    free(buffer[i]);
-  }
+    // 5. Free memory blocks
+    for(i=0; i<msize; i++){
+      free(buffer[i]);
+    }
+    
+    if(parent)
+      sleep(15);
+    
+    // 6. Unregister itself to stop the profiling
+    sprintf(cmd, "echo 'U %u'>//proc/zoom/status", mypid);
+    system(cmd);
 
-  if(parent)
-    sleep(15);
-
-  // 6. Unregister itself to stop the profiling
-  sprintf(cmd, "echo 'U %u'>//proc/zoom/status", mypid);
-  system(cmd);
-
-  // if parent, wait for all the children to prevent zombies
+    // if parent, wait for all the children to prevent zombies
     if(parent) {
       for(i=0;i<child_num;i++)
 	waitpid(children[i],&status,0);
@@ -443,4 +538,5 @@ int main(int argc, char* argv[])
       return 0;
     }
 }
+
 
